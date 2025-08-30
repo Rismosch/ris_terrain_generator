@@ -54,6 +54,8 @@ pub struct Args {
     pub width: usize,
     pub continent_count: usize,
     pub kernel_radius: f32,
+    pub fractal_main_layer: usize,
+    pub fractal_weight: f32,
 }
 
 pub struct HeightMap {
@@ -68,15 +70,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         width,
         continent_count,
         kernel_radius,
+        fractal_main_layer,
+        fractal_weight,
     } = args;
 
+    eprintln!("seed: {:?}", seed);
     let mut rng = Rng::new(seed);
     let kernel_radius = kernel_radius as isize;
-
-    let fractal_weight = |layer: usize| {
-        let a = layer as f32;
-        0.75 / (a * a)
-    };
 
     eprintln!("resolution: {}x{}", width, width);
 
@@ -150,11 +150,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     let mut starting_positions = Vec::<ContinentPixel>::with_capacity(continent_count);
 
     for _ in 0..starting_positions.capacity() {
-
         loop {
             let side = rng.next_i32_between(0, 5) as usize;
-            let ix = rng.next_i32_between(0, width as i32 - 1) as usize;
-            let iy = rng.next_i32_between(0, width as i32) as usize;
+            let min = 0;
+            let max = width as i32 - 1;
+            let ix = rng.next_i32_between(min, max) as usize;
+            let iy = rng.next_i32_between(min, max) as usize;
 
             let candidate = ContinentPixel {
                 side,
@@ -436,7 +437,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     // generate kernel
     eprintln!("generate kernel");
-    let kernel_diameter = (2 * kernel_radius) - 1;
     let mut kernel = Vec::new();
 
     for iy in -kernel_radius..=kernel_radius {
@@ -460,7 +460,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     for side in sides.iter() {
         let ProtoSide {
-            perlin_sampler,
+            perlin_sampler: _,
             height_map,
         } = side;
 
@@ -475,7 +475,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             }
 
             for ix in 0..width {
-                let mut h = height_map.borrow().get(ix, iy);
+                let h = height_map.borrow().get(ix, iy);
                 let continent_index_lhs = h.continent_index;
                 let continent = &continents[continent_index_lhs];
 
@@ -484,9 +484,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                         continue;
                     }
                     
-                    let mut ix_ = ix as isize + kx;
-                    let mut iy_ = iy as isize + ky;
-                    let mut side_ = height_map.borrow().side;
+                    let ix_ = ix as isize + kx;
+                    let iy_ = iy as isize + ky;
+                    let side_ = height_map.borrow().side;
 
                     let w = width as isize;
 
@@ -522,7 +522,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                             Side::F => (w - 1 - kx + d, iy_, Side::R),
                             Side::U => (iy_, kx - d, Side::L),
                             Side::D => (w - 1 - iy_, w - 1 - kx + d, Side::L),
-                            s => unreachable!("{}", s),
                         }
                     } else if falls_on_right {
                         let d = width as isize - ix as isize;
@@ -533,7 +532,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                             Side::F => (0 + kx - d, iy_, Side::L),
                             Side::U => (w - 1 - iy_, 0 + kx - d, Side::R),
                             Side::D => (iy_, w - 1 - kx + d, Side::R),
-                            s => unreachable!("{}", s),
                         }
                     } else if falls_on_upper {
                         let d = iy as isize + 1;
@@ -546,7 +544,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                             Side::F => (w - 1 - ix_, 0 + ky - d, Side::U),
                             Side::U => (w - 1 - ix_, 0 + ky - d, Side::F),
                             Side::D => (ix_, w - 1 - ky + d, Side::B),
-                            s => unreachable!("{}", s),
                         }
                     } else if falls_on_lower {
                         let d = width as isize - iy as isize;
@@ -557,7 +554,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                             Side::F => (w - 1 - ix_, w - 1 - ky + d, Side::D),
                             Side::U => (ix_, 0 + ky - d, Side::B),
                             Side::D => (w - 1 - ix_, w - 1 - ky + d, Side::F),
-                            s => unreachable!("{}", s),
                         }
                     } else {
                         (ix_, iy_, side_)
@@ -606,18 +602,28 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
                     let origin_pixel = continent.origin.clone();
                     let origin_side = match origin_pixel.side {
-                        0 => "l",
-                        1 => "b",
-                        2 => "r",
-                        3 => "f",
-                        4 => "u",
-                        5 => "d",
+                        0 => Side::L,
+                        1 => Side::B,
+                        2 => Side::R,
+                        3 => Side::F,
+                        4 => Side::U,
+                        5 => Side::D,
                         _ => unreachable!(),
                     };
 
-                    let m = (p * p_) / 2.0;
-                    let d = p - m;
-                    let d_ = m - p_;
+                    let o = position_on_sphere(
+                        (origin_pixel.ix, origin_pixel.iy),
+                        width,
+                        origin_side,
+                    );
+                    let d = p - o;
+                    let d_ = p_ - o;
+
+                    // formular for smoother, but in my opinion
+                    // less interesting terrain:
+                    // let m = (p * p_) / 2.0;
+                    // let d = p - m;
+                    // let d_ = m - p_;
 
                     let dot = Vec3::dot(v.normalize(), d.normalize());
                     let dot_ = Vec3::dot(v_.normalize(), d_.normalize());
@@ -637,10 +643,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                         },
                     };
 
-                    // apply height
-                    //let weight = kernel_radius as f32 -  kd.abs();
-
-                    // https://www.desmos.com/calculator/wf3agxic4a
+                    // https://www.desmos.com/calculator/2oekg4vn5i
                     let a = (kd.abs() / kernel_radius as f32) - 1.0;
                     let weight = 1.0 - f32::sqrt(1.0 - a * a);
 
@@ -664,28 +667,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     eprintln!("continent min: {}, max: {}", min_continent, max_continent);
 
     // continents end
-    let normalize = |sides: &mut [ProtoSide]| {
-        let mut min = f32::MAX;
-        let mut max = f32::MIN;
-
-        for side in sides.iter() {
-            for h in side.height_map.borrow().values.iter() {
-                min = f32::min(min, h.height);
-                max = f32::max(max, h.height);
-            }
-        }
-
-        if min < max {
-            for side in sides.iter_mut() {
-                for h in side.height_map.borrow_mut().values.iter_mut() {
-                    h.height = (h.height - min) / (max - min);
-                }
-            }
-        }
-
-        eprintln!("normalized: {} {}", min, max);
-    };
-
     normalize(&mut sides);
 
     // sides
@@ -699,9 +680,15 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
         let mut layer = 0;
         loop {
+            let grid_width: i32 = 1 << (layer + 1);
+
+            // https://www.desmos.com/calculator/xnwqm8vdez
+            let a = 1.0;
+            let b = fractal_main_layer as f32;
+            let x = layer as f32;
+            let grid_weight = fractal_weight / (f32::abs(a * x - a * b) + 1.0);
+
             layer += 1;
-            let grid_width: i32 = 1 << layer;
-            let grid_weight = fractal_weight(layer);
 
             if grid_width >= width as i32 {
                 break;
@@ -974,7 +961,6 @@ fn position_on_sphere(
             y,
             -1.0,
         ),
-        _ => unreachable!(),
     };
 
     // normalize to get position on sphere
@@ -1007,4 +993,26 @@ fn random_gradient(ix: i32, iy: i32, seed: Seed) -> Vec2 {
     let v_x = f32::cos(random);
     let v_y = f32::sin(random);
     Vec2(v_x, v_y)
+}
+
+fn normalize(sides: &mut [ProtoSide]) {
+    let mut min = f32::MAX;
+    let mut max = f32::MIN;
+
+    for side in sides.iter() {
+        for h in side.height_map.borrow().values.iter() {
+            min = f32::min(min, h.height);
+            max = f32::max(max, h.height);
+        }
+    }
+
+    if min < max {
+        for side in sides.iter_mut() {
+            for h in side.height_map.borrow_mut().values.iter_mut() {
+                h.height = (h.height - min) / (max - min);
+            }
+        }
+    }
+
+    eprintln!("normalized: {} {}", min, max);
 }

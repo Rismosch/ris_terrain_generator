@@ -16,8 +16,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         only_generate_first_face: false,
         seed: rng::Seed::default(),
         width,
-        continent_count: 5,
-        kernel_radius: width as f32 * 0.065,
+        continent_count: 6,
+        kernel_radius: width as f32 * 0.75,
+        fractal_main_layer: 1,
+        fractal_weight: 0.25,
     };
     let result = terrain_generator::run(args);
     save_as_qoi(width, result)

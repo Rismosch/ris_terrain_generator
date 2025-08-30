@@ -19,8 +19,10 @@ The main and only entry point is `terrain_generator::run`. It produces the 6 squ
 - `width` is the width of a single face. This has no effect on the overall structure of the terrain. It only affects the resolution. Note that the bigger the width, the longer the generator takes. For example my target width is `(1 << 12) + 1`, which takes several minutes to procude.
 - `continent_count` determines how many continents should be generated. For more information see [How it works](#How-it-works).
 - `kernel_radius` has an effect on the width of mountain ranges. A higher radius produces thicker mountains, but massively increases generation time.
+- `fractal_main_layer` describes which layer of the fractal perlin noise is the main one. Every other will be weighted less than the main layer.
+- `fractal_weight` determines the weight of the fractal perlin noise in comparison to the continental terrain generation.
 
-The resulting heightmap is normalized. This means all values will be between 0 and 1. This makes it easy to transform the resulting `Vec<f32>` to transform into any format you desire. In the example of this repo, `main.rs`, it converts these values int a [qoi image](https://qoiformat.org/).
+The resulting heightmap is normalized. This means all values will be between 0 and 1. This makes it easy to transform the resulting `Vec<f32>` to transform into any format you desire. `save_as_qoi` in `main.rs` is an example, which demonstrates how to convert these values into [qoi images](https://qoiformat.org/) and save them to the root of this repository.
 
 To find `i` to index a pixel in the heightmap, use the following formula:
 
