@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 /// returns the linear blend of x and y, i.e., x * (1 - a) + y * a
 pub fn mix(x: f32, y: f32, a: f32) -> f32 {
     x * (1. - a) + y * a

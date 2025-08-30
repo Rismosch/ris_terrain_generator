@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn save_as_qoi(
     width: usize,
-    height_maps: impl IntoIterator<Item = crate::terrain_generator::HeightMap>
+    height_maps: impl IntoIterator<Item = crate::terrain_generator::HeightMap>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::path::PathBuf;
 
@@ -35,10 +35,10 @@ fn save_as_qoi(
     use crate::color::Gradient;
     use crate::color::OkLab;
     use crate::color::Rgb;
-    use crate::terrain_generator::HeightMap;
     use crate::qoi::Channels;
     use crate::qoi::ColorSpace;
     use crate::qoi::QoiDesc;
+    use crate::terrain_generator::HeightMap;
 
     let gradient = Gradient::try_from([
         OkLab::from(Rgb::from_hex("#00008a")?),
@@ -51,10 +51,7 @@ fn save_as_qoi(
     ])?;
 
     for height_map in height_maps.into_iter() {
-        let HeightMap {
-            values,
-            side,
-        } = height_map;
+        let HeightMap { values, side } = height_map;
 
         eprintln!("convert height map to bytes...");
         let mut bytes = Vec::with_capacity(values.len() * 3);
@@ -77,11 +74,7 @@ fn save_as_qoi(
         };
         let qoi_bytes = qoi::encode(&bytes, desc)?;
 
-        eprintln!(
-            "bytes len: {} qoi len: {}",
-            bytes.len(),
-            qoi_bytes.len(),
-        );
+        eprintln!("bytes len: {} qoi len: {}", bytes.len(), qoi_bytes.len(),);
 
         eprintln!("serializing...");
 
@@ -100,4 +93,3 @@ fn save_as_qoi(
     eprintln!("done!");
     Ok(())
 }
-

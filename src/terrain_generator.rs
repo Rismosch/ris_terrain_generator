@@ -4,8 +4,8 @@ use std::f32::consts::PI;
 
 use crate::matrix::Mat2;
 use crate::quaternion::Quat;
-use crate::rng::Seed;
 use crate::rng::Rng;
+use crate::rng::Seed;
 use crate::vector::Vec2;
 use crate::vector::Vec3;
 
@@ -20,7 +20,6 @@ use crate::vector::Vec3;
 ///         └───┘
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
-
     /// left (-x)
     L,
     /// back (-y)
@@ -115,7 +114,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             perlin_sampler: PerlinSampler {
                 offset: (3, 0),
                 edge0: None,
-                edge1: Some(Box::new(|iy, (gw, gh)| ((0, iy), Mat2::identity()))),
+                edge1: Some(Box::new(|iy, _| ((0, iy), Mat2::identity()))),
                 edge2: None,
                 edge3: None,
             },
@@ -124,9 +123,18 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         ProtoSide {
             perlin_sampler: PerlinSampler {
                 offset: (1, -1),
-                edge0: Some(Box::new(move |iy, (gw, gh)| ((iy, 0), Mat2(Vec2(0.0, 1.0), Vec2(-1.0, 0.0))))),
-                edge1: Some(Box::new(move |iy, (gw, gh)| ((gw - iy + gw * 2, 0), Mat2(Vec2(0.0, -1.0), Vec2(1.0, 0.0))))),
-                edge2: Some(Box::new(move |ix, (gw, gh)| ((gw - ix + gw * 3, 0), Mat2(Vec2(-1.0, 0.0), Vec2(0.0, -1.0))))),
+                edge0: Some(Box::new(move |iy, _| {
+                    ((iy, 0), Mat2(Vec2(0.0, 1.0), Vec2(-1.0, 0.0)))
+                })),
+                edge1: Some(Box::new(move |iy, (gw, _)| {
+                    ((gw - iy + gw * 2, 0), Mat2(Vec2(0.0, -1.0), Vec2(1.0, 0.0)))
+                })),
+                edge2: Some(Box::new(move |ix, (gw, _)| {
+                    (
+                        (gw - ix + gw * 3, 0),
+                        Mat2(Vec2(-1.0, 0.0), Vec2(0.0, -1.0)),
+                    )
+                })),
                 edge3: None,
             },
             height_map: RefCell::new(ProtoHeightMap::new(Side::U, width)),
@@ -134,10 +142,19 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         ProtoSide {
             perlin_sampler: PerlinSampler {
                 offset: (1, 1),
-                edge0: Some(Box::new(move |iy, (gw, gh)| ((gw - iy, gh), Mat2(Vec2(0.0, -1.0), Vec2(1.0, 0.0))))),
-                edge1: Some(Box::new(move |iy, (gw, gh)| ((iy + 2 * gw, gh), Mat2(Vec2(0.0, 1.0), Vec2(-1.0, 0.0))))),
+                edge0: Some(Box::new(move |iy, (gw, gh)| {
+                    ((gw - iy, gh), Mat2(Vec2(0.0, -1.0), Vec2(1.0, 0.0)))
+                })),
+                edge1: Some(Box::new(move |iy, (gw, gh)| {
+                    ((iy + 2 * gw, gh), Mat2(Vec2(0.0, 1.0), Vec2(-1.0, 0.0)))
+                })),
                 edge2: None,
-                edge3: Some(Box::new(move |ix, (gw, gh)| ((gw - ix + gw * 3, gh), Mat2(Vec2(-1.0, 0.0), Vec2(0.0, -1.0))))),
+                edge3: Some(Box::new(move |ix, (gw, gh)| {
+                    (
+                        (gw - ix + gw * 3, gh),
+                        Mat2(Vec2(-1.0, 0.0), Vec2(0.0, -1.0)),
+                    )
+                })),
             },
             height_map: RefCell::new(ProtoHeightMap::new(Side::D, width)),
         },
@@ -157,11 +174,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             let ix = rng.next_i32_between(min, max) as usize;
             let iy = rng.next_i32_between(min, max) as usize;
 
-            let candidate = ContinentPixel {
-                side,
-                ix,
-                iy,
-            };
+            let candidate = ContinentPixel { side, ix, iy };
 
             let candidate_exists = starting_positions.iter().any(|x| *x == candidate);
             if candidate_exists {
@@ -215,11 +228,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     eprintln!("generate continents... {}", percentage);
                 }
 
-                side.height_map.borrow_mut().set(
-                    candidate.ix,
-                    candidate.iy,
-                    h,
-                );
+                side.height_map
+                    .borrow_mut()
+                    .set(candidate.ix, candidate.iy, h);
 
                 pixel = Some(candidate);
                 break;
@@ -228,7 +239,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             let Some(pixel) = pixel else {
                 continue;
             };
-            
+
             // walk left
             let new_pixel = if pixel.ix == 0 {
                 match pixel.side {
@@ -415,7 +426,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     // down -> front
                     5 => ContinentPixel {
                         side: 3,
-                        ix: width -1 - pixel.ix,
+                        ix: width - 1 - pixel.ix,
                         iy: 0,
                     },
                     _ => unreachable!(),
@@ -429,9 +440,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             };
             continent.discovered_pixels.push(new_pixel);
         }
-        
+
         if !new_pixel_was_discovered {
-            break
+            break;
         }
     }
 
@@ -453,7 +464,10 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     kernel.sort_by(|l, r| l.1.total_cmp(&r.1));
 
     // calculate heights on continent boundaries
-    eprintln!("calculate height based on plate boundaries... {}", discovered_pixel_count);
+    eprintln!(
+        "calculate height based on plate boundaries... {}",
+        discovered_pixel_count
+    );
 
     let mut min_continent = f32::MAX;
     let mut max_continent = f32::MIN;
@@ -467,9 +481,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         for iy in 0..width {
             if iy % 5 == 0 {
                 eprintln!(
-                    "finding plate boundaries {}... progress: {}/{}", 
+                    "finding plate boundaries {}... progress: {}/{}",
                     height_map.borrow().side,
-                    iy, 
+                    iy,
                     width,
                 );
             }
@@ -483,7 +497,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     if kx == 0 && ky == 0 {
                         continue;
                     }
-                    
+
                     let ix_ = ix as isize + kx;
                     let iy_ = iy as isize + ky;
                     let side_ = height_map.borrow().side;
@@ -500,11 +514,10 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     let falls_on_lower_left = falls_on_lower && falls_on_left;
                     let falls_on_lower_right = falls_on_lower && falls_on_right;
 
-                    let falls_on_corner = 
-                        falls_on_upper_left ||
-                        falls_on_upper_right ||
-                        falls_on_lower_left ||
-                        falls_on_lower_right;
+                    let falls_on_corner = falls_on_upper_left
+                        || falls_on_upper_right
+                        || falls_on_lower_left
+                        || falls_on_lower_right;
 
                     if falls_on_corner {
                         continue;
@@ -526,11 +539,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     } else if falls_on_right {
                         let d = width as isize - ix as isize;
                         match side_ {
-                            Side::L => (0 + kx - d, iy_, Side::B),
-                            Side::B => (0 + kx - d, iy_, Side::R),
-                            Side::R => (0 + kx - d, iy_, Side::F),
-                            Side::F => (0 + kx - d, iy_, Side::L),
-                            Side::U => (w - 1 - iy_, 0 + kx - d, Side::R),
+                            Side::L => (kx - d, iy_, Side::B),
+                            Side::B => (kx - d, iy_, Side::R),
+                            Side::R => (kx - d, iy_, Side::F),
+                            Side::F => (kx - d, iy_, Side::L),
+                            Side::U => (w - 1 - iy_, kx - d, Side::R),
                             Side::D => (iy_, w - 1 - kx + d, Side::R),
                         }
                     } else if falls_on_upper {
@@ -538,21 +551,21 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                         // ky is negative, negate to make math more intuitive
                         let ky = -ky;
                         match side_ {
-                            Side::L => (0 + ky - d, ix_, Side::U),
+                            Side::L => (ky - d, ix_, Side::U),
                             Side::B => (ix_, w - 1 - ky + d, Side::U),
                             Side::R => (w - 1 - ky + d, w - 1 - ix_, Side::U),
-                            Side::F => (w - 1 - ix_, 0 + ky - d, Side::U),
-                            Side::U => (w - 1 - ix_, 0 + ky - d, Side::F),
+                            Side::F => (w - 1 - ix_, ky - d, Side::U),
+                            Side::U => (w - 1 - ix_, ky - d, Side::F),
                             Side::D => (ix_, w - 1 - ky + d, Side::B),
                         }
                     } else if falls_on_lower {
                         let d = width as isize - iy as isize;
                         match side_ {
-                            Side::L => (0 + ky - d, w - 1 - ix_, Side::D),
-                            Side::B => (ix_, 0 + ky - d, Side::D),
+                            Side::L => (ky - d, w - 1 - ix_, Side::D),
+                            Side::B => (ix_, ky - d, Side::D),
                             Side::R => (w - 1 - ky + d, ix_, Side::D),
                             Side::F => (w - 1 - ix_, w - 1 - ky + d, Side::D),
-                            Side::U => (ix_, 0 + ky - d, Side::B),
+                            Side::U => (ix_, ky - d, Side::B),
                             Side::D => (w - 1 - ix_, w - 1 - ky + d, Side::F),
                         }
                     } else {
@@ -567,9 +580,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                         .find(|x| x.height_map.borrow().side == mapped_side_)
                         .expect("height map to exist")
                         .height_map;
-                    let Some(h_) = height_map_
-                        .borrow()
-                        .try_get(ix_ as usize, iy_ as usize) else {
+                    let Some(h_) = height_map_.borrow().try_get(ix_, iy_) else {
                         println!("after map 1: {} {} {} {}", width, side_, ix_, iy_);
                         println!("after map 2: {} {} {} {}", kx, ky, ix, iy);
                         panic!();
@@ -586,16 +597,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     let q = Quat::angle_axis(angle, continent.rotation_axis);
                     let q_ = Quat::angle_axis(angle, continent_.rotation_axis);
 
-                    let p = position_on_sphere(
-                        (ix, iy),
-                        width,
-                        height_map.borrow().side,
-                    );
-                    let p_ = position_on_sphere(
-                        (ix_, iy_),
-                        width,
-                        height_map_.borrow().side,
-                    );
+                    let p = position_on_sphere((ix, iy), width, height_map.borrow().side);
+                    let p_ = position_on_sphere((ix_, iy_), width, height_map_.borrow().side);
 
                     let v = (q.rotate(p) - p).normalize();
                     let v_ = (q_.rotate(p_) - p_).normalize();
@@ -611,11 +614,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                         _ => unreachable!(),
                     };
 
-                    let o = position_on_sphere(
-                        (origin_pixel.ix, origin_pixel.iy),
-                        width,
-                        origin_side,
-                    );
+                    let o =
+                        position_on_sphere((origin_pixel.ix, origin_pixel.iy), width, origin_side);
                     let d = p - o;
                     let d_ = p_ - o;
 
@@ -629,18 +629,10 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     let dot_ = Vec3::dot(v_.normalize(), d_.normalize());
 
                     let boundary_height = match (dot.is_sign_positive(), dot_.is_sign_positive()) {
-                        (false, false) => {
-                            dot * dot_
-                        },
-                        (true, false) => {
-                            dot * dot_ * -1.0
-                        },
-                        (false, true) => {
-                            dot * dot_
-                        },
-                        (true, true) => {
-                            dot * dot_
-                        },
+                        (false, false) => dot * dot_,
+                        (true, false) => dot * dot_ * -1.0,
+                        (false, true) => dot * dot_,
+                        (true, true) => dot * dot_,
                     };
 
                     // https://www.desmos.com/calculator/2oekg4vn5i
@@ -653,7 +645,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
                     min_continent = f32::min(min_continent, h.height);
                     max_continent = f32::max(max_continent, h.height);
-                    
+
                     break;
                 }
             }
@@ -697,10 +689,10 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             for iy in 0..width {
                 if iy % 100 == 0 {
                     eprintln!(
-                        "generating side {} ({})... progress: {}/{} layer: {}", 
+                        "generating side {} ({})... progress: {}/{} layer: {}",
                         height_map.borrow().side,
                         i,
-                        iy, 
+                        iy,
                         width,
                         layer,
                     );
@@ -723,13 +715,17 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                         let default_y = iy + offset_y;
                         let default = ((default_x, default_y), Mat2::identity());
 
+                        #[allow(clippy::if_same_then_else)]
+                        // justification: makes things easier to reason about. each branch is an
+                        // individual corner, edge or center pixel
                         if ix == 0 {
                             if iy == 0 {
                                 ((default_x, default_y), Mat2::init(0.0))
                             } else if iy == grid_width {
                                 ((default_x, default_y), Mat2::init(0.0))
                             } else {
-                                perlin_sampler.edge0
+                                perlin_sampler
+                                    .edge0
                                     .as_ref()
                                     .map(|edge| edge(iy, (grid_width, grid_width)))
                                     .unwrap_or(default)
@@ -740,18 +736,21 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                             } else if iy == grid_width {
                                 ((default_x, default_y), Mat2::init(0.0))
                             } else {
-                                perlin_sampler.edge1
+                                perlin_sampler
+                                    .edge1
                                     .as_ref()
                                     .map(|edge| edge(iy, (grid_width, grid_width)))
                                     .unwrap_or(default)
                             }
                         } else if iy == 0 {
-                            perlin_sampler.edge2
+                            perlin_sampler
+                                .edge2
                                 .as_ref()
                                 .map(|edge| edge(ix, (grid_width, grid_width)))
                                 .unwrap_or(default)
                         } else if iy == grid_width {
-                            perlin_sampler.edge3
+                            perlin_sampler
+                                .edge3
                                 .as_ref()
                                 .map(|edge| edge(ix, (grid_width, grid_width)))
                                 .unwrap_or(default)
@@ -825,19 +824,19 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     normalize(&mut sides);
 
+    // prepare result
     let mut result = Vec::new();
     for side in sides.into_iter() {
         let height_map = side.height_map.borrow();
 
-        let values = height_map.values.iter()
+        let values = height_map
+            .values
+            .iter()
             .map(|x| x.height)
             .collect::<Vec<_>>();
         let side = height_map.side;
 
-        let height_map = HeightMap {
-            values,
-            side,
-        };
+        let height_map = HeightMap { values, side };
 
         result.push(height_map);
     }
@@ -896,12 +895,14 @@ struct ProtoSide {
     height_map: RefCell<ProtoHeightMap>,
 }
 
+type PerlinSamplerCallback = Box<dyn Fn(i32, (i32, i32)) -> ((i32, i32), Mat2)>;
+
 struct PerlinSampler {
     offset: (i32, i32),
-    edge0: Option<Box<dyn Fn(i32, (i32, i32)) -> ((i32, i32), Mat2)>>,
-    edge1: Option<Box<dyn Fn(i32, (i32, i32)) -> ((i32, i32), Mat2)>>,
-    edge2: Option<Box<dyn Fn(i32, (i32, i32)) -> ((i32, i32), Mat2)>>,
-    edge3: Option<Box<dyn Fn(i32, (i32, i32)) -> ((i32, i32), Mat2)>>,
+    edge0: Option<PerlinSamplerCallback>,
+    edge1: Option<PerlinSamplerCallback>,
+    edge2: Option<PerlinSamplerCallback>,
+    edge3: Option<PerlinSamplerCallback>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -918,11 +919,7 @@ struct Continent {
     rotation_axis: Vec3,
 }
 
-fn position_on_sphere(
-    texture_coordinate: (usize, usize),
-    width: usize,
-    side: Side,
-) -> Vec3 {
+fn position_on_sphere(texture_coordinate: (usize, usize), width: usize, side: Side) -> Vec3 {
     let (ix, iy) = texture_coordinate;
 
     // normalize texture coordinates
@@ -931,36 +928,12 @@ fn position_on_sphere(
 
     // get position on cube
     let v = match side {
-        Side::L => Vec3(
-            -1.0,
-            -x,
-            -y,
-        ),
-        Side::B => Vec3(
-            x,
-            -1.0,
-            -y,
-        ),
-        Side::R => Vec3(
-            1.0,
-            x,
-            -y,
-        ),
-        Side::F => Vec3(
-            -x,
-            1.0,
-            -y,
-        ),
-        Side::U => Vec3(
-            x,
-            -y,
-            1.0,
-        ),
-        Side::D => Vec3(
-            x,
-            y,
-            -1.0,
-        ),
+        Side::L => Vec3(-1.0, -x, -y),
+        Side::B => Vec3(x, -1.0, -y),
+        Side::R => Vec3(1.0, x, -y),
+        Side::F => Vec3(-x, 1.0, -y),
+        Side::U => Vec3(x, -y, 1.0),
+        Side::D => Vec3(x, y, -1.0),
     };
 
     // normalize to get position on sphere
@@ -985,9 +958,9 @@ fn random_gradient(ix: i32, iy: i32, seed: Seed) -> Vec2 {
     let a = (ix as u32) ^ (seed_a as u32);
     let b = (iy as u32) ^ (seed_b as u32);
     let a = a.wrapping_mul(3284157443);
-    let b = b ^ ((a << s) | (a >> (w-s)));
+    let b = b ^ ((a << s) | (a >> (w - s)));
     let b = b.wrapping_mul(1911520717);
-    let a = a ^ ((b << s) | (b >> (w-s)));
+    let a = a ^ ((b << s) | (b >> (w - s)));
     let a = a.wrapping_mul(2048419325);
     let random = a as f32 * (PI / (!(!0u32 >> 1) as f32));
     let v_x = f32::cos(random);

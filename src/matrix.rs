@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::vector::Vec2;
 use crate::vector::Vec3;
 use crate::vector::Vec4;

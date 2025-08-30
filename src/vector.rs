@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::matrix::Mat2;
 
 //
@@ -1783,11 +1785,17 @@ impl Vec2 {
     }
 
     pub fn mix(x: Self, y: Self, a: Self) -> Self {
-        Self(crate::common::mix(x.0, y.0, a.0), crate::common::mix(x.1, y.1, a.1))
+        Self(
+            crate::common::mix(x.0, y.0, a.0),
+            crate::common::mix(x.1, y.1, a.1),
+        )
     }
 
     pub fn step(edge: Self, x: Self) -> Self {
-        Self(crate::common::step(edge.0, x.0), crate::common::step(edge.1, x.1))
+        Self(
+            crate::common::step(edge.0, x.0),
+            crate::common::step(edge.1, x.1),
+        )
     }
 
     pub fn smoothstep(edge0: Self, edge1: Self, x: Self) -> Self {

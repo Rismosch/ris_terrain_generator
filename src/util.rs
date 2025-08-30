@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 pub fn repeat<F: FnMut(usize) + Clone>(repeats: usize, test: F) {
     for i in 0..repeats {
         test.clone()(i);
