@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         kernel_radius: width as f32 * 0.75,
         fractal_main_layer: 1,
         fractal_weight: 0.25,
+        erosion_iterations: width * width * 6,
     };
     let result = terrain_generator::run(args);
     save_as_qoi(width, result)

@@ -55,6 +55,7 @@ pub struct Args {
     pub kernel_radius: f32,
     pub fractal_main_layer: usize,
     pub fractal_weight: f32,
+    pub erosion_iterations: usize,
 }
 
 pub struct HeightMap {
@@ -71,6 +72,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         kernel_radius,
         fractal_main_layer,
         fractal_weight,
+        erosion_iterations,
     } = args;
 
     eprintln!("seed: {:?}", seed);
@@ -823,6 +825,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     }
 
     normalize(&mut sides);
+
+    // erosion
+    // todo
 
     // prepare result
     let mut result = Vec::new();

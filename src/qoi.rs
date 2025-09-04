@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![allow(clippy::upper_case_acronyms)]
 
 // QOI implemented in Rust
 // original format and C encoder/decoder by Dominic Szablewski: https://qoiformat.org/
@@ -13,14 +14,12 @@ pub struct QoiDesc {
     pub color_space: ColorSpace,
 }
 
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Channels {
     RGB = 3,
     RGBA = 4,
 }
 
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorSpace {
     SRGB = 0,

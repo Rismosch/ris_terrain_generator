@@ -1,6 +1,6 @@
 [package]
 name = "ris_terrain_generator"
-version = "0.1.0-dev"
+version = "0.1.0"
 authors = ["Rismosch"]
 edition = "2021"
 rust-version = "1.77"
