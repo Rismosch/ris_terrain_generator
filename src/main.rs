@@ -11,7 +11,7 @@ mod util;
 mod vector;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let width = (1 << 8) + 1;
+    let width = (1 << 6) + 1;
     let args = terrain_generator::Args {
         only_generate_first_face: true,
         seed: rng::Seed::default(),
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         kernel_radius: width as f32 * 0.75,
         fractal_main_layer: 1,
         fractal_weight: 0.25,
-        erosion_iterations: width * width * 6,
+        erosion_iterations: 1,
     };
     let result = terrain_generator::run(args);
     save_as_qoi(width, result)
@@ -89,7 +89,7 @@ fn save_as_qoi(
         let mut file = std::fs::File::create_new(filepath)?;
         let f = &mut file;
         crate::io::write(f, &qoi_bytes)?;
-    } // end qoi
+    }
 
     eprintln!("done!");
     Ok(())

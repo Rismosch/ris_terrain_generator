@@ -827,7 +827,56 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     normalize(&mut sides);
 
     // erosion
-    // todo
+    eprintln!("find erosion stride...");
+
+    let phi = (1.0 + f32::sqrt(5.0)) / 2.0; // golden ratio
+    let resolution = width * width;
+    let modulo = resolution * 6;
+
+    let ideal_stride = modulo as f32 * phi;
+
+    let mut offset = 0;
+
+    let stride = loop {
+        let candidate1 = ideal_stride as usize + offset;
+        let candidate2 = ideal_stride as usize - offset;
+
+        let gcd1 = gcd(candidate1, modulo);
+        let gcd2 = gcd(candidate2, modulo);
+
+        if gcd1 == 1 {
+            break candidate1;
+        }
+
+        if gcd2 == 1 {
+            break candidate2;
+        }
+
+        offset += 1;
+    };
+
+    eprintln!("stride {}, ideal: {}", stride, ideal_stride);
+
+    let mut idrop = rng.next_usize();
+    let iterations = erosion_iterations * modulo;
+    for i in 0..iterations {
+        if i % 100_000 == 0 {
+            eprintln!("erode... {}/{}", i, iterations);
+        }
+
+        idrop = (idrop + stride) % modulo;
+
+        let side = idrop / resolution;
+        let side = &sides[side];
+
+        let index = idrop % resolution;
+
+        let mut value = side.height_map.borrow().values[index];
+        value.height = i as f32;
+        side.height_map.borrow_mut().values[index] = value;
+    }
+
+    normalize(&mut sides);
 
     // prepare result
     let mut result = Vec::new();
@@ -993,4 +1042,14 @@ fn normalize(sides: &mut [ProtoSide]) {
     }
 
     eprintln!("normalized: {} {}", min, max);
+}
+
+fn gcd(mut a: usize, mut b: usize) -> usize {
+    while b != 0 {
+        let temp = b;
+        b = a % b;
+        a = temp;
+    }
+
+    a
 }
