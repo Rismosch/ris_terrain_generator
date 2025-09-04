@@ -53,7 +53,7 @@ The terrain is generated in 3 distinct steps:
 
 - continent generation
 - fractal perlin noise
-- hydraulic erosion
+- hydraulic erosion (todo)
 
 Continent generation produces continents. It picks random points on the surface of the cube. One point for each continent. Then it grows these continents using a randomized breadth-first search until the whole cube is covered.
 
@@ -72,6 +72,10 @@ Since the 6 faces tile the cube, great care must be taken at the edges of each f
 A finished heightmap, with a colored gradient applied, may look like this:
 
 ![example](example.png)
+
+And rendered applied to a cubic sphere mesh, it may look like this:
+
+todo
 
 ## Notes
 

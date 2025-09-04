@@ -11,9 +11,9 @@ mod util;
 mod vector;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let width = (1 << 6) + 1;
+    let width = (1 << 8) + 1;
     let args = terrain_generator::Args {
-        only_generate_first_face: false,
+        only_generate_first_face: true,
         seed: rng::Seed::default(),
         width,
         continent_count: 6,
