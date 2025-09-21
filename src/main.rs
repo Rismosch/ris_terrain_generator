@@ -11,18 +11,34 @@ mod util;
 mod vector;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let width = (1 << 6) + 1;
+    // settings
+    let width = (1 << 3) + 1;
     let args = terrain_generator::Args {
-        only_generate_first_face: true,
+        only_generate_first_face: false,
         seed: rng::Seed::default(),
         width,
         continent_count: 6,
         kernel_radius: width as f32 * 0.75,
         fractal_main_layer: 1,
         fractal_weight: 0.25,
+        erosion_brush_radius: 3,
         erosion_iterations: 1,
+        erosion_max_lifetime: 30,
+        erosion_start_speed: 1.0,
+        erosion_start_water: 1.0,
+        erosion_inertia: 0.3,
+        erosion_min_sediment_capacity: 0.01,
+        erosion_sediment_capacity_factor: 3.0,
+        erosion_erode_speed: 0.3,
+        erosion_deposit_speed: 0.3,
+        erosion_gravity: 4.0,
+        erosion_evaporate_speed: 0.01,
     };
+    
+    // run terrain generator
     let result = terrain_generator::run(args);
+
+    // use heightmap as desired
     save_as_qoi(width, result)
 }
 

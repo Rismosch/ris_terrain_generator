@@ -1,4 +1,3 @@
-use core::fmt;
 use std::cell::RefCell;
 use std::f32::consts::PI;
 
@@ -34,7 +33,7 @@ pub enum Side {
     D,
 }
 
-impl fmt::Display for Side {
+impl std::fmt::Display for Side {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Side::L => write!(f, "l"),
@@ -47,6 +46,19 @@ impl fmt::Display for Side {
     }
 }
 
+impl Side {
+    fn to_index(self) -> usize {
+        match self {
+            Side::L => 0,
+            Side::B => 1,
+            Side::R => 2,
+            Side::F => 3,
+            Side::U => 4,
+            Side::D => 5,
+        }
+    }
+}
+
 pub struct Args {
     pub only_generate_first_face: bool,
     pub seed: Seed,
@@ -55,7 +67,18 @@ pub struct Args {
     pub kernel_radius: f32,
     pub fractal_main_layer: usize,
     pub fractal_weight: f32,
+    pub erosion_brush_radius: usize,
     pub erosion_iterations: usize,
+    pub erosion_max_lifetime: usize,
+    pub erosion_start_speed: f32,
+    pub erosion_start_water: f32,
+    pub erosion_inertia: f32,
+    pub erosion_min_sediment_capacity: f32,
+    pub erosion_sediment_capacity_factor: f32,
+    pub erosion_erode_speed: f32,
+    pub erosion_deposit_speed: f32,
+    pub erosion_gravity: f32,
+    pub erosion_evaporate_speed: f32,
 }
 
 pub struct HeightMap {
@@ -72,7 +95,18 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         kernel_radius,
         fractal_main_layer,
         fractal_weight,
+        erosion_brush_radius,
         erosion_iterations,
+        erosion_max_lifetime,
+        erosion_start_speed,
+        erosion_start_water,
+        erosion_inertia,
+        erosion_min_sediment_capacity,
+        erosion_sediment_capacity_factor,
+        erosion_erode_speed,
+        erosion_deposit_speed,
+        erosion_gravity,
+        erosion_evaporate_speed,
     } = args;
 
     eprintln!("seed: {:?}", seed);
@@ -661,7 +695,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     eprintln!("continent min: {}, max: {}", min_continent, max_continent);
 
     // continents end
-    normalize(&mut sides);
+    normalize(&mut sides, Some(129.8125 / 255.0));
 
     // sides
     for (i, side) in sides.iter().enumerate() {
@@ -807,7 +841,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     // normalize and apply weight to heightmap
     eprintln!("normalize and apply weight...");
-    normalize(&mut sides);
+    normalize(&mut sides, None);
 
     for side in sides.iter_mut() {
         for h in side.height_map.borrow_mut().values.iter_mut() {
@@ -824,9 +858,52 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         }
     }
 
-    normalize(&mut sides);
+    normalize(&mut sides, None);
 
     // erosion
+    eprintln!("build erosion brush...");
+    let mut brush = ErosionBrush::default();
+    let mut sum = 0.0;
+    let r = erosion_brush_radius as isize;
+    for iy in -r..=r {
+        for ix in -r..=r {
+            let sqr_dst = ix * ix + iy * iy;
+            let weight = if sqr_dst < r * r {
+                let weight = 1.0 - f32::sqrt(sqr_dst as f32) / r as f32;
+                sum += weight;
+                weight
+            } else {
+                0.0
+            };
+
+            let value = ErosionBrushValue {
+                offset: (ix, iy),
+                weight,
+            };
+            brush.values.push(value);
+        }
+    }
+
+    for value in brush.values.iter_mut() {
+        value.weight /= sum;
+    }
+
+    eprint!("brush:");
+    let brush_width = erosion_brush_radius * 2 + 1;
+    for (i, value) in brush.values.iter().enumerate() {
+        if i % brush_width == 0 {
+            eprintln!()
+        }
+
+        if value.weight == 0.0 {
+            eprint!("      ");
+        }
+        else {
+            eprint!(" {:.3}", value.weight);
+        }
+    }
+
+    eprintln!();
     eprintln!("find erosion stride...");
 
     let phi = (1.0 + f32::sqrt(5.0)) / 2.0; // golden ratio
@@ -860,7 +937,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     let mut idrop = rng.next_usize();
     let iterations = erosion_iterations * modulo;
     for i in 0..iterations {
-        if i % 100_000 == 0 {
+        if i % 10_000 == 0 {
             eprintln!("erode... {}/{}", i, iterations);
         }
 
@@ -870,13 +947,142 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         let side = &sides[side];
 
         let index = idrop % resolution;
+        let mut pos = Vec2(
+            (index % width) as f32,
+            (index / width) as f32,
+        );
+        let mut dir = Vec2::zero();
+        let mut speed = erosion_start_speed;
+        let mut water = erosion_start_water;
+        let mut sediment = 0.0;
 
-        let mut value = side.height_map.borrow().values[index];
-        value.height = i as f32;
-        side.height_map.borrow_mut().values[index] = value;
+        for _ in 0..erosion_max_lifetime {
+            let node_x = pos.x() as usize;
+            let node_y = pos.y() as usize;
+            let droplet_index = node_y * width + node_x;
+            let cell_offset = Vec2(
+                pos.x() - node_x as f32,
+                pos.y() - node_y as f32,
+            );
+
+            let (gradient, height) = calculate_gradient_and_height(
+                pos,
+                width,
+                side.height_map.borrow().side,
+                &sides,
+            );
+
+            dir.set_x(dir.x() * erosion_inertia - gradient.x() * (1.0 - erosion_inertia));
+            dir.set_y(dir.y() * erosion_inertia - gradient.y() * (1.0 - erosion_inertia));
+            let len = f32::max(0.01, dir.length());
+            dir /= len;
+            pos += dir;
+
+            // droplet may crossed to another side. we need to remap
+            loop {
+                if pos.0 < 0.0 {
+                    // droplet moved left
+                    todo!();
+                } else if pos.0 > width as f32 {
+                    // droplet moved right
+                    todo!();
+                } else if pos.1 < 0.0 {
+                    // droplet moved up
+                    todo!();
+                } else if pos.1 > width as f32 {
+                    // droplet moved down
+                    todo!();
+                } else {
+                    break;
+                }
+            }
+
+            if dir.x() == 0.0 && dir.y() == 0.0 {
+                break;
+            }
+
+            let (_, new_height) = calculate_gradient_and_height(
+                pos,
+                width,
+                side.height_map.borrow().side,
+                &sides,
+            );
+            let delta_height = new_height - height;
+
+            let sediment_capacity = f32::max(
+                -delta_height * speed * water * erosion_sediment_capacity_factor,
+                erosion_min_sediment_capacity,
+            );
+
+            if sediment > sediment_capacity || delta_height > 0.0 {
+                let amount_to_deposit = if delta_height > 0.0 {
+                    f32::min(delta_height, sediment)
+                } else {
+                    (sediment - sediment_capacity) * erosion_deposit_speed
+                };
+
+                sediment -= amount_to_deposit;
+
+                let deposit_nw = amount_to_deposit * (1.0 - cell_offset.x()) * (1.0 - cell_offset.y());
+                let deposit_ne = amount_to_deposit * cell_offset.x() * (1.0 - cell_offset.y());
+                let deposit_sw = amount_to_deposit * (1.0 - cell_offset.x()) * cell_offset.y();
+                let deposit_se = amount_to_deposit * cell_offset.x() * cell_offset.y();
+
+                let side = side.height_map.borrow().side;
+
+                deposit_sediment(
+                    (node_x, node_y),
+                    width,
+                    side,
+                    &sides,
+                    deposit_nw,
+                );
+                deposit_sediment(
+                    (node_x + 1, node_y),
+                    width,
+                    side,
+                    &sides,
+                    deposit_ne,
+                );
+                deposit_sediment(
+                    (node_x, node_y + 1),
+                    width,
+                    side,
+                    &sides,
+                    deposit_sw,
+                );
+                deposit_sediment(
+                    (node_x + 1, node_y + 1),
+                    width,
+                    side,
+                    &sides,
+                    deposit_se,
+                );
+            } else {
+                let amount_to_erode = f32::min(
+                    (sediment_capacity - sediment) * erosion_erode_speed,
+                    -delta_height,
+                );
+
+                let mut h = side.height_map.borrow().get(node_x, node_y);
+                let delta_sediment = if h.height < amount_to_erode {
+                    h.height
+                } else {
+                    amount_to_erode
+                };
+                h.height -= delta_sediment;
+                sediment += delta_sediment;
+            }
+
+            speed = f32::sqrt(f32::max(
+                0.0,
+                speed * speed + delta_height * erosion_gravity,
+            ));
+            water *= 1.0 - erosion_evaporate_speed;
+        }
     }
 
-    normalize(&mut sides);
+    normalize(&mut sides, None);
 
     // prepare result
     let mut result = Vec::new();
@@ -973,6 +1179,17 @@ struct Continent {
     rotation_axis: Vec3,
 }
 
+#[derive(Default, Debug, Clone)]
+struct ErosionBrush {
+    values: Vec<ErosionBrushValue>,
+}
+
+#[derive(Debug, Clone)]
+struct ErosionBrushValue {
+    offset: (isize, isize),
+    weight: f32,
+}
+
 fn position_on_sphere(texture_coordinate: (usize, usize), width: usize, side: Side) -> Vec3 {
     let (ix, iy) = texture_coordinate;
 
@@ -1022,7 +1239,7 @@ fn random_gradient(ix: i32, iy: i32, seed: Seed) -> Vec2 {
     Vec2(v_x, v_y)
 }
 
-fn normalize(sides: &mut [ProtoSide]) {
+fn normalize(sides: &mut [ProtoSide], nan_replacement: Option<f32>) {
     let mut min = f32::MAX;
     let mut max = f32::MIN;
 
@@ -1036,7 +1253,10 @@ fn normalize(sides: &mut [ProtoSide]) {
     if min < max {
         for side in sides.iter_mut() {
             for h in side.height_map.borrow_mut().values.iter_mut() {
-                h.height = (h.height - min) / (max - min);
+                h.height = match (h.height.is_nan(), nan_replacement) {
+                    (true, Some(nan_replacement)) => nan_replacement,
+                    _ => (h.height - min) / (max - min)
+                };
             }
         }
     }
@@ -1052,4 +1272,165 @@ fn gcd(mut a: usize, mut b: usize) -> usize {
     }
 
     a
+}
+
+fn remap_erosion_index(
+    i: (usize, usize),
+    width: usize,
+    mut side: Side,
+) -> Option<((usize, usize), Side)> {
+    let (mut ix, mut iy) = i;
+
+    if ix < width && iy < width {
+        // x and y are in range, nothing needs to be wrapped
+    } else if ix < width  && iy >= width {
+        // x is in range, wrap y
+        match side {
+            Side::L => {
+                ix = 0;
+                iy = width - 1 - ix;
+                side = Side::D;
+            },
+            Side::B => {
+                iy = 0;
+                side = Side::D;
+            },
+            Side::R => {
+                ix = width - 1;
+                iy = ix;
+                side = Side::D;
+            },
+            Side::F => {
+                ix = width - 1 - ix;
+                iy = width - 1;
+                side = Side::D;
+            },
+            Side::U => {
+                ix = ix;
+                iy = 0;
+                side = Side::B;
+            },
+            Side::D => {
+                ix = width - 1 - ix;
+                iy = width - 1;
+                side = Side::F;
+            },
+        }
+    } else if ix >= width  && iy < width {
+        // y is in range, wrap x
+        match side {
+            Side::L => {
+                ix = 0;
+                side = Side::B;
+            },
+            Side::B => {
+                ix = 0;
+                side = Side::R;
+            },
+            Side::R => {
+                ix = 0;
+                side = Side::F;
+            },
+            Side::F => {
+                ix = 0;
+                side = Side::L;
+            },
+            Side::U => {
+                ix = width - 1 - iy;
+                iy = 0;
+                side = Side::R;
+            },
+            Side::D => {
+                ix = iy;
+                iy = width - 1;
+                side = Side::R;
+            },
+        }
+    } else if ix == width - 1 && iy == width - 1 {
+        // bottom right corner, use special wrap (only enforcable by caller)
+        return None;
+    } else {
+        // both x and y aren't in range, wrap both
+        unreachable!("if this branch is hit, then i miscalculated things. {} {} {}", ix, iy, width);
+    }
+
+    Some(((ix, iy), side))
+}
+
+fn sample_height(
+    ix: usize,
+    iy: usize,
+    width: usize,
+    side: Side,
+    sides: &[ProtoSide],
+) -> f32 {
+    match remap_erosion_index((ix, iy), width, side) {
+        Some(((ix, iy), side)) => {
+            let side_index = side.to_index();
+            let h = sides[side_index].height_map.borrow().get(ix, iy);
+            h.height
+        },
+        None => {
+            let val1 = sample_height(ix - 1, iy, width, side, sides);
+            let val2 = sample_height(ix, iy - 1, width, side, sides);
+            (val1 + val2) / 2.0
+        },
+    }
+
+}
+
+fn calculate_gradient_and_height(
+    pos: Vec2,
+    width: usize,
+    side: Side,
+    sides: &[ProtoSide],
+) -> (Vec2, f32) {
+    let coord_x = pos.x() as usize;
+    let coord_y = pos.y() as usize;
+
+    let x = pos.x() - coord_x as f32;
+    let y = pos.y() - coord_y as f32;
+
+    let nw = sample_height(coord_x, coord_y, width, side, sides);
+    let ne = sample_height(coord_x + 1, coord_y, width, side, sides);
+    let sw = sample_height(coord_x, coord_y + 1, width, side, sides);
+    let se = sample_height(coord_x + 1, coord_y + 1, width, side, sides);
+
+    let gradient_x = (ne - nw) * (1.0 - y) + (se * sw) * y;
+    let gradient_y = (sw - nw) * (1.0 - x) + (se - ne) * x;
+    let gradient = Vec2(gradient_x, gradient_y);
+
+    let height = 
+        nw * (1.0 - x) * (1.0 - y) +
+        ne * x * (1.0 - y) +
+        sw * (1.0 - x) * y +
+        se * x * y;
+
+    (gradient, height)
+}
+
+fn deposit_sediment(
+    ipos: (usize, usize),
+    width: usize,
+    side: Side,
+    sides: &[ProtoSide],
+    sediment: f32,
+) {
+    match remap_erosion_index(ipos, width, side) {
+        Some(((ix, iy), side)) => {
+            let side_index = side.to_index();
+            let mut h = sides[side_index].height_map.borrow().get(ix, iy);
+            h.height += sediment;
+            let side = &sides[side_index];
+            let height_map = &side.height_map;
+            let mut height_map = height_map.borrow_mut();
+            height_map.set(ix, iy, h);
+        },
+        None => {
+            let (ix, iy) = ipos;
+
+            deposit_sediment((ix - 1, iy), width, side, sides, sediment * 0.5);
+            deposit_sediment((ix, iy - 1), width, side, sides, sediment * 0.5);
+        }
+    }
 }
