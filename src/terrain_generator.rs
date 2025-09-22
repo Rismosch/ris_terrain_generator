@@ -88,8 +88,8 @@ pub struct Args {
     pub kernel_radius: f32,
     pub fractal_main_layer: usize,
     pub fractal_weight: f32,
-    pub erosion_brush_radius: usize,
     pub erosion_iterations: usize,
+    pub erosion_brush_radius: usize,
     pub erosion_max_lifetime: usize,
     pub erosion_start_speed: f32,
     pub erosion_start_water: f32,
@@ -116,8 +116,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         kernel_radius,
         fractal_main_layer,
         fractal_weight,
-        erosion_brush_radius,
         erosion_iterations,
+        erosion_brush_radius,
         erosion_max_lifetime,
         erosion_start_speed,
         erosion_start_water,
@@ -946,7 +946,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     let iterations = erosion_iterations * modulo;
     for i in 0..iterations {
         if i % 10_000 == 0 {
-            eprintln!("erode... {}/{}", i, iterations);
+            let progress = i as f32 / iterations as f32 * 100.0;
+            eprintln!(
+                "erode... {}%",
+                progress,
+            );
         }
 
         idrop = (idrop + stride) % modulo;
@@ -964,9 +968,22 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         let mut water = erosion_start_water;
         let mut sediment = 0.0;
 
-        for _ in 0..erosion_max_lifetime {
-            let node_x = pos.x() as usize;
-            let node_y = pos.y() as usize;
+        for lifetime in 0..erosion_max_lifetime {
+            let Vec2(x, y) = pos;
+            let node_x = if x == width as f32 {
+                x - 0.001
+            } else {
+                x
+            } as usize;
+            let node_y = if y == width as f32 {
+                y - 0.001
+            } else {
+                y
+            } as usize;
+
+            //let node_x = pos.x() as usize;
+            //let node_y = pos.y() as usize;
+
             let cell_offset = Vec2(
                 pos.x() - node_x as f32,
                 pos.y() - node_y as f32,
@@ -1310,6 +1327,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     -delta_height,
                 );
 
+                ////if node_y * width + node_x == 4229 {
+                //if i == 57316 || i == 57315 {
+                //    eprintln!("err {} {:?}", i, pos);
+                //}
+
                 let mut h = sides[side.to_index()].height_map.borrow().get(node_x, node_y);
                 let delta_sediment = if h.height < amount_to_erode {
                     h.height
@@ -1318,6 +1340,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 };
                 h.height -= delta_sediment;
                 sediment += delta_sediment;
+                sides[side.to_index()].height_map.borrow_mut().set(node_x, node_y, h);
             }
 
             speed = f32::sqrt(f32::max(
@@ -1611,6 +1634,9 @@ fn sample_height(
     side: Side,
     sides: &[ProtoSide],
 ) -> f32 {
+    let ix = usize::min(ix, width);
+    let iy = usize::min(iy, width);
+
     match remap_erosion_index((ix, iy), width, side) {
         Some(((ix, iy), side)) => {
             let side_index = side.to_index();

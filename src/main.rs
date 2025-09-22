@@ -21,16 +21,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         kernel_radius: width as f32 * 0.75,
         fractal_main_layer: 1,
         fractal_weight: 0.25,
+        erosion_iterations: 100,
         erosion_brush_radius: 3,
-        erosion_iterations: 1,
         erosion_max_lifetime: 30,
         erosion_start_speed: 1.0,
         erosion_start_water: 1.0,
         erosion_inertia: 0.3,
         erosion_min_sediment_capacity: 0.01,
         erosion_sediment_capacity_factor: 3.0,
-        erosion_erode_speed: 0.3,
-        erosion_deposit_speed: 0.3,
+        erosion_erode_speed: 0.00001,
+        erosion_deposit_speed: 0.00001,
         erosion_gravity: 4.0,
         erosion_evaporate_speed: 0.01,
     };
@@ -66,6 +66,10 @@ fn save_as_qoi(
         OkLab::from(Rgb::from_hex("#ff0300")?),
         OkLab::from(Rgb::from_hex("#a64020")?),
     ])?;
+    //let gradient = Gradient::try_from([
+    //    OkLab::from(Rgb::from_hex("#000000")?),
+    //    OkLab::from(Rgb::from_hex("#ffffff")?),
+    //])?;
 
     for height_map in height_maps.into_iter() {
         let HeightMap { values, side } = height_map;
