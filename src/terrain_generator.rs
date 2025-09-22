@@ -17,7 +17,7 @@ use crate::vector::Vec3;
 ///     └───┼───┼───┴───┘
 ///         │ D │
 ///         └───┘
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Side {
     /// left (-x)
     L,
@@ -31,6 +31,12 @@ pub enum Side {
     U,
     /// down (-z)
     D,
+}
+
+impl Default for Side {
+    fn default() -> Self {
+        Self::L
+    }
 }
 
 impl std::fmt::Display for Side {
@@ -55,6 +61,21 @@ impl Side {
             Side::F => 3,
             Side::U => 4,
             Side::D => 5,
+        }
+    }
+}
+
+impl From<usize> for Side {
+    fn from(value: usize) -> Self {
+        debug_assert!(value < 6);
+        match value {
+            0 => Side::L,
+            1 => Side::B,
+            2 => Side::R,
+            3 => Side::F,
+            4 => Side::U,
+            5 => Side::D,
+            _ => unreachable!(),
         }
     }
 }
@@ -204,7 +225,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     for _ in 0..starting_positions.capacity() {
         loop {
-            let side = rng.next_i32_between(0, 5) as usize;
+            let side = Side::from(rng.next_i32_between(0, 5) as usize);
             let min = 0;
             let max = width as i32 - 1;
             let ix = rng.next_i32_between(min, max) as usize;
@@ -246,7 +267,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let index = rng.next_i32_between(min, max) as usize;
                 let candidate = continent.discovered_pixels.swap_remove(index);
 
-                let side = &mut sides[candidate.side];
+                let side = &mut sides[candidate.side.to_index()];
                 let mut h = side.height_map.borrow().get(candidate.ix, candidate.iy);
 
                 if h.continent_index != usize::MAX {
@@ -280,42 +301,41 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             let new_pixel = if pixel.ix == 0 {
                 match pixel.side {
                     // left -> front
-                    0 => ContinentPixel {
-                        side: 3,
+                    Side::L => ContinentPixel {
+                        side: Side::F,
                         ix: width - 1,
                         iy: pixel.iy,
                     },
                     // back -> left
-                    1 => ContinentPixel {
-                        side: 0,
+                    Side::B => ContinentPixel {
+                        side: Side::L,
                         ix: width - 1,
                         iy: pixel.iy,
                     },
                     // right -> back
-                    2 => ContinentPixel {
-                        side: 1,
+                    Side::R => ContinentPixel {
+                        side: Side::B,
                         ix: width - 1,
                         iy: pixel.iy,
                     },
                     // front -> right
-                    3 => ContinentPixel {
-                        side: 2,
+                    Side::F => ContinentPixel {
+                        side: Side::R,
                         ix: width - 1,
                         iy: pixel.iy,
                     },
                     // up -> left
-                    4 => ContinentPixel {
-                        side: 0,
+                    Side::U => ContinentPixel {
+                        side: Side::L,
                         ix: pixel.iy,
                         iy: 0,
                     },
                     // down -> left
-                    5 => ContinentPixel {
-                        side: 0,
+                    Side::D => ContinentPixel {
+                        side: Side::L,
                         ix: width - 1 - pixel.iy,
                         iy: width - 1,
                     },
-                    _ => unreachable!(),
                 }
             } else {
                 ContinentPixel {
@@ -330,42 +350,41 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             let new_pixel = if pixel.ix == width - 1 {
                 match pixel.side {
                     // left -> back
-                    0 => ContinentPixel {
-                        side: 1,
+                    Side::L => ContinentPixel {
+                        side: Side::B,
                         ix: 0,
                         iy: pixel.iy,
                     },
                     // back -> right
-                    1 => ContinentPixel {
-                        side: 2,
+                    Side::B => ContinentPixel {
+                        side: Side::R,
                         ix: 0,
                         iy: pixel.iy,
                     },
                     // right -> front
-                    2 => ContinentPixel {
-                        side: 3,
+                    Side::R => ContinentPixel {
+                        side: Side::F,
                         ix: 0,
                         iy: pixel.iy,
                     },
                     // front -> left
-                    3 => ContinentPixel {
-                        side: 0,
+                    Side::F => ContinentPixel {
+                        side: Side::L,
                         ix: 0,
                         iy: pixel.iy,
                     },
                     // up -> right
-                    4 => ContinentPixel {
-                        side: 2,
+                    Side::U => ContinentPixel {
+                        side: Side::R,
                         ix: width - 1 - pixel.iy,
                         iy: 0,
                     },
                     // down -> right
-                    5 => ContinentPixel {
-                        side: 2,
+                    Side::D => ContinentPixel {
+                        side: Side::R,
                         ix: pixel.iy,
                         iy: width - 1,
                     },
-                    _ => unreachable!(),
                 }
             } else {
                 ContinentPixel {
@@ -380,42 +399,41 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             let new_pixel = if pixel.iy == 0 {
                 match pixel.side {
                     // left -> up
-                    0 => ContinentPixel {
-                        side: 4,
+                    Side::L => ContinentPixel {
+                        side: Side::U,
                         ix: 0,
                         iy: pixel.ix,
                     },
                     // back -> up
-                    1 => ContinentPixel {
-                        side: 4,
+                    Side::B => ContinentPixel {
+                        side: Side::U,
                         ix: pixel.ix,
                         iy: width - 1,
                     },
                     // right -> up
-                    2 => ContinentPixel {
-                        side: 4,
+                    Side::R => ContinentPixel {
+                        side: Side::U,
                         ix: width - 1,
                         iy: width - 1 - pixel.ix,
                     },
                     // front -> up
-                    3 => ContinentPixel {
-                        side: 4,
+                    Side::F => ContinentPixel {
+                        side: Side::U,
                         ix: width - 1 - pixel.ix,
                         iy: 0,
                     },
                     // up -> front
-                    4 => ContinentPixel {
-                        side: 3,
+                    Side::U => ContinentPixel {
+                        side: Side::F,
                         ix: width - 1 - pixel.ix,
                         iy: 0,
                     },
                     // down -> back
-                    5 => ContinentPixel {
-                        side: 1,
+                    Side::D => ContinentPixel {
+                        side: Side::B,
                         ix: pixel.ix,
                         iy: width - 1,
                     },
-                    _ => unreachable!(),
                 }
             } else {
                 ContinentPixel {
@@ -430,42 +448,41 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             let new_pixel = if pixel.iy == width - 1 {
                 match pixel.side {
                     // left -> down
-                    0 => ContinentPixel {
-                        side: 5,
+                    Side::L => ContinentPixel {
+                        side: Side::D,
                         ix: 0,
                         iy: width - 1 - pixel.ix,
                     },
                     // back -> down
-                    1 => ContinentPixel {
-                        side: 5,
+                    Side::B => ContinentPixel {
+                        side: Side::D,
                         ix: pixel.ix,
                         iy: 0,
                     },
                     // right -> down
-                    2 => ContinentPixel {
-                        side: 5,
+                    Side::R => ContinentPixel {
+                        side: Side::D,
                         ix: width - 1,
                         iy: pixel.ix,
                     },
                     // front -> down
-                    3 => ContinentPixel {
-                        side: 5,
+                    Side::F => ContinentPixel {
+                        side: Side::D,
                         ix: width - 1 - pixel.ix,
                         iy: width - 1,
                     },
                     // up -> back
-                    4 => ContinentPixel {
-                        side: 1,
+                    Side::U => ContinentPixel {
+                        side: Side::B,
                         ix: pixel.ix,
                         iy: 0,
                     },
                     // down -> front
-                    5 => ContinentPixel {
-                        side: 3,
+                    Side::D => ContinentPixel {
+                        side: Side::F,
                         ix: width - 1 - pixel.ix,
                         iy: 0,
                     },
-                    _ => unreachable!(),
                 }
             } else {
                 ContinentPixel {
@@ -640,18 +657,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     let v_ = (q_.rotate(p_) - p_).normalize();
 
                     let origin_pixel = continent.origin.clone();
-                    let origin_side = match origin_pixel.side {
-                        0 => Side::L,
-                        1 => Side::B,
-                        2 => Side::R,
-                        3 => Side::F,
-                        4 => Side::U,
-                        5 => Side::D,
-                        _ => unreachable!(),
-                    };
 
                     let o =
-                        position_on_sphere((origin_pixel.ix, origin_pixel.iy), width, origin_side);
+                        position_on_sphere((origin_pixel.ix, origin_pixel.iy), width, origin_pixel.side);
                     let d = p - o;
                     let d_ = p_ - o;
 
@@ -944,7 +952,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         idrop = (idrop + stride) % modulo;
 
         let side = idrop / resolution;
-        let side = &sides[side];
+        let mut side = sides[side].height_map.borrow().side;
 
         let index = idrop % resolution;
         let mut pos = Vec2(
@@ -959,7 +967,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         for _ in 0..erosion_max_lifetime {
             let node_x = pos.x() as usize;
             let node_y = pos.y() as usize;
-            let droplet_index = node_y * width + node_x;
             let cell_offset = Vec2(
                 pos.x() - node_x as f32,
                 pos.y() - node_y as f32,
@@ -968,7 +975,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             let (gradient, height) = calculate_gradient_and_height(
                 pos,
                 width,
-                side.height_map.borrow().side,
+                side,
                 &sides,
             );
 
@@ -980,18 +987,259 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
             // droplet may crossed to another side. we need to remap
             loop {
-                if pos.0 < 0.0 {
+                let width = width as f32;
+
+                let Vec2(x, y) = pos;
+
+                if x < 0.0 {
                     // droplet moved left
-                    todo!();
-                } else if pos.0 > width as f32 {
+                    // x is negative, negate to make math more intuitive
+                    let x = -x;
+                    match side {
+                        Side::L => {
+                            side = Side::F;
+                            pos = Vec2(
+                                width - x,
+                                y,
+                            );
+                        },
+                        Side::B => {
+                            side = Side::L;
+                            pos = Vec2(
+                                width - x,
+                                y,
+                            );
+                        },
+                        Side::R => {
+                            side = Side::B;
+                            pos = Vec2(
+                                width - x,
+                                y,
+                            );
+                        },
+                        Side::F => {
+                            side = Side::R;
+                            pos = Vec2(
+                                width - x,
+                                y,
+                            );
+                        },
+                        Side::U => {
+                            side = Side::L;
+                            pos = Vec2(
+                                y,
+                                x,
+                            );
+                            // rotate dir ccw
+                            dir = Vec2(
+                                -dir.y(),
+                                dir.x(),
+                            );
+                        },
+                        Side::D => {
+                            side = Side::L;
+                            pos = Vec2(
+                                width - y,
+                                width - x,
+                            );
+                            // rotate dir cw
+                            dir = Vec2(
+                                y,
+                                -x,
+                            );
+                        },
+                    }
+                } else if x > width {
                     // droplet moved right
-                    todo!();
-                } else if pos.1 < 0.0 {
+                    // mod x back into the side to make math more intuitive
+                    match side {
+                        Side::L => {
+                            side = Side::B;
+                            pos = Vec2(
+                                x - width,
+                                y,
+                            );
+                        },
+                        Side::B => {
+                            side = Side::R;
+                            pos = Vec2(
+                                x - width,
+                                y,
+                            );
+                        },
+                        Side::R => {
+                            side = Side::F;
+                            pos = Vec2(
+                                x - width,
+                                y,
+                            );
+                        },
+                        Side::F => {
+                            side = Side::L;
+                            pos = Vec2(
+                                x - width,
+                                y,
+                            );
+                        },
+                        Side::U => {
+                            side = Side::R;
+                            pos = Vec2(
+                                width - y,
+                                x - width,
+                            );
+                            // rotate dir cw
+                            dir = Vec2(
+                                y,
+                                -x,
+                            );
+                        },
+                        Side::D => {
+                            side = Side::R;
+                            pos = Vec2(
+                                y,
+                                2.0 * width - x,
+                            );
+                            // rotate dir ccw
+                            dir = Vec2(
+                                -dir.y(),
+                                dir.x(),
+                            );
+                        },
+                    }
+                } else if y < 0.0 {
                     // droplet moved up
-                    todo!();
-                } else if pos.1 > width as f32 {
+                    // y is negative, negate to make math more intuitive
+                    let y = -y;
+                    match side {
+                        Side::L => {
+                            side = Side::U;
+                            pos = Vec2(
+                                y,
+                                x,
+                            );
+                            // rotate dir cw
+                            dir = Vec2(
+                                y,
+                                -x,
+                            );
+                        },
+                        Side::B => {
+                            side = Side::U;
+                            pos = Vec2(
+                                x,
+                                width - y,
+                            );
+                        },
+                        Side::R => {
+                            side = Side::U;
+                            pos = Vec2(
+                                width - y,
+                                width - x,
+                            );
+                            // rotate dir ccw
+                            dir = Vec2(
+                                -dir.y(),
+                                dir.x(),
+                            );
+                        },
+                        Side::F => {
+                            side = Side::U;
+                            pos = Vec2(
+                                width - x,
+                                y,
+                            );
+                            // rotate dir 180°
+                            dir = Vec2(
+                                dir.y(),
+                                dir.x(),
+                            );
+                        },
+                        Side::U => {
+                            side = Side::F;
+                            pos = Vec2(
+                                width - x,
+                                y,
+                            );
+                            // rotate dir 180°
+                            dir = Vec2(
+                                dir.y(),
+                                dir.x(),
+                            );
+                        },
+                        Side::D => {
+                            side = Side::B;
+                            pos = Vec2(
+                                x,
+                                width - y,
+                            );
+                        },
+                    }
+                } else if y > width {
                     // droplet moved down
-                    todo!();
+                    match side {
+                        Side::L => {
+                            side = Side::D;
+                            pos = Vec2(
+                                y - width,
+                                width - x,
+                            );
+                            // rotate dir ccw
+                            dir = Vec2(
+                                -dir.y(),
+                                dir.x(),
+                            );
+                        },
+                        Side::B => {
+                            side = Side::D;
+                            pos = Vec2(
+                                x,
+                                2.0 * width - y,
+                            );
+                        },
+                        Side::R => {
+                            side = Side::D;
+                            pos = Vec2(
+                                2.0 * width - y,
+                                x,
+                            );
+                            // rotate dir cw
+                            dir = Vec2(
+                                y,
+                                -x,
+                            );
+                        },
+                        Side::F => {
+                            side = Side::D;
+                            pos = Vec2(
+                                width - x,
+                                2.0 * width - y,
+                            );
+                            // rotate dir 180°
+                            dir = Vec2(
+                                dir.y(),
+                                dir.x(),
+                            );
+                        },
+                        Side::U => {
+                            side = Side::B;
+                            pos = Vec2(
+                                x,
+                                2.0 * width - y,
+                            );
+                        },
+                        Side::D => {
+                            side = Side::F;
+                            pos = Vec2(
+                                width - x,
+                                2.0 * width - y,
+                            );
+                            // rotate dir 180°
+                            dir = Vec2(
+                                dir.y(),
+                                dir.x(),
+                            );
+                        },
+                    }
                 } else {
                     break;
                 }
@@ -1004,7 +1252,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             let (_, new_height) = calculate_gradient_and_height(
                 pos,
                 width,
-                side.height_map.borrow().side,
+                side,
                 &sides,
             );
             let delta_height = new_height - height;
@@ -1027,8 +1275,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let deposit_ne = amount_to_deposit * cell_offset.x() * (1.0 - cell_offset.y());
                 let deposit_sw = amount_to_deposit * (1.0 - cell_offset.x()) * cell_offset.y();
                 let deposit_se = amount_to_deposit * cell_offset.x() * cell_offset.y();
-
-                let side = side.height_map.borrow().side;
 
                 deposit_sediment(
                     (node_x, node_y),
@@ -1064,7 +1310,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     -delta_height,
                 );
 
-                let mut h = side.height_map.borrow().get(node_x, node_y);
+                let mut h = sides[side.to_index()].height_map.borrow().get(node_x, node_y);
                 let delta_sediment = if h.height < amount_to_erode {
                     h.height
                 } else {
@@ -1167,7 +1413,7 @@ struct PerlinSampler {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 struct ContinentPixel {
-    side: usize,
+    side: Side,
     ix: usize,
     iy: usize,
 }
@@ -1346,11 +1592,12 @@ fn remap_erosion_index(
                 side = Side::R;
             },
         }
-    } else if ix == width - 1 && iy == width - 1 {
+    } else if ix == width && iy == width {
         // bottom right corner, use special wrap (only enforcable by caller)
         return None;
     } else {
         // both x and y aren't in range, wrap both
+        eprintln!("stacktrace:\n{}", std::backtrace::Backtrace::force_capture());
         unreachable!("if this branch is hit, then i miscalculated things. {} {} {}", ix, iy, width);
     }
 

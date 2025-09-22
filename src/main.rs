@@ -12,7 +12,7 @@ mod vector;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // settings
-    let width = (1 << 3) + 1;
+    let width = (1 << 6) + 1;
     let args = terrain_generator::Args {
         only_generate_first_face: false,
         seed: rng::Seed::default(),
