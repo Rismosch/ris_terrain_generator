@@ -1243,7 +1243,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                             side = Side::D;
                             pos = Vec2(
                                 x,
-                                2.0 * width - y,
+                                y - width,
                             );
                             eprintln!("debug this {}", i);
                         },
@@ -1279,7 +1279,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                             side = Side::B;
                             pos = Vec2(
                                 x,
-                                2.0 * width - y,
+                                y - width,
                             );
                             eprintln!("debug this {}", i);
                         },
@@ -1332,40 +1332,40 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
                 sediment -= amount_to_deposit;
 
-                todo!("use eko here to find the correct nw, ne, sw, and se indices");
-                let deposit_nw = amount_to_deposit * (1.0 - cell_offset.x()) * (1.0 - cell_offset.y());
-                let deposit_ne = amount_to_deposit * cell_offset.x() * (1.0 - cell_offset.y());
-                let deposit_sw = amount_to_deposit * (1.0 - cell_offset.x()) * cell_offset.y();
-                let deposit_se = amount_to_deposit * cell_offset.x() * cell_offset.y();
+                eprintln!("use eko here to find the correct nw, ne, sw, and se indices");
+                //let deposit_nw = amount_to_deposit * (1.0 - cell_offset.x()) * (1.0 - cell_offset.y());
+                //let deposit_ne = amount_to_deposit * cell_offset.x() * (1.0 - cell_offset.y());
+                //let deposit_sw = amount_to_deposit * (1.0 - cell_offset.x()) * cell_offset.y();
+                //let deposit_se = amount_to_deposit * cell_offset.x() * cell_offset.y();
 
-                deposit_sediment(
-                    (node_x, node_y),
-                    width,
-                    side,
-                    &sides,
-                    deposit_nw,
-                );
-                deposit_sediment(
-                    (node_x + 1, node_y),
-                    width,
-                    side,
-                    &sides,
-                    deposit_ne,
-                );
-                deposit_sediment(
-                    (node_x, node_y + 1),
-                    width,
-                    side,
-                    &sides,
-                    deposit_sw,
-                );
-                deposit_sediment(
-                    (node_x + 1, node_y + 1),
-                    width,
-                    side,
-                    &sides,
-                    deposit_se,
-                );
+                //deposit_sediment(
+                //    (node_x, node_y),
+                //    width,
+                //    side,
+                //    &sides,
+                //    deposit_nw,
+                //);
+                //deposit_sediment(
+                //    (node_x + 1, node_y),
+                //    width,
+                //    side,
+                //    &sides,
+                //    deposit_ne,
+                //);
+                //deposit_sediment(
+                //    (node_x, node_y + 1),
+                //    width,
+                //    side,
+                //    &sides,
+                //    deposit_sw,
+                //);
+                //deposit_sediment(
+                //    (node_x + 1, node_y + 1),
+                //    width,
+                //    side,
+                //    &sides,
+                //    deposit_se,
+                //);
             } else {
                 let amount_to_erode = f32::min(
                     (sediment_capacity - sediment) * erosion_erode_speed,
@@ -1415,8 +1415,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 csv.push_str(&to_append);
             }
 
-            let file_path = format!("C:/Users/Rismosch/source/repos/terrain_generator/debug_{}.csv", i);
-            if std::fs::exists(&file_path).unwrap() {
+            let file_path = std::path::PathBuf::from(format!("C:/Users/Rismosch/source/repos/terrain_generator/debug_{}.csv", i));
+            if file_path.exists() {
                 std::fs::remove_file(&file_path).unwrap();
             }
 
@@ -1661,109 +1661,240 @@ fn gcd(mut a: usize, mut b: usize) -> usize {
 }
 
 fn remap_erosion_index(
-    i: (usize, usize),
+    i: (isize, isize),
     width: usize,
-    mut side: Side,
-) -> Option<((usize, usize), Side)> {
-    let (mut ix, mut iy) = i;
+    side: Side,
+) -> Result<((usize, usize), Side), (((usize, usize), Side), ((usize, usize), Side))> {
+    let (ix, iy) = i;
+    let w = width as isize;
 
-    if ix < width && iy < width {
+    eprintln!("hoi {:?} {:?}", i, side);
+
+    let ((new_ix, new_iy), new_side) = if ix >= 0 && ix < w && iy >= 0 && iy < w {
         // x and y are in range, nothing needs to be wrapped
-    } else if ix < width  && iy >= width {
-        // x is in range, wrap y
+        (i, side)
+    } else if ix < 0 && iy >= 0 && iy < w {
+        // x is too small, y is in range
+        // move left
         match side {
-            Side::L => {
-                ix = 0;
-                iy = width - 1 - ix;
-                side = Side::D;
-            },
-            Side::B => {
-                iy = 0;
-                side = Side::D;
-            },
-            Side::R => {
-                ix = width - 1;
-                iy = ix;
-                side = Side::D;
-            },
-            Side::F => {
-                ix = width - 1 - ix;
-                iy = width - 1;
-                side = Side::D;
-            },
-            Side::U => {
-                ix = ix;
-                iy = 0;
-                side = Side::B;
-            },
-            Side::D => {
-                ix = width - 1 - ix;
-                iy = width - 1;
-                side = Side::F;
-            },
+            Side::L => (
+                (
+                    w + ix,
+                    iy,
+                ),
+                Side::F,
+            ),
+            Side::B => (
+                (
+                    w + ix,
+                    iy,
+                ),
+                Side::L,
+            ),
+            Side::R => (
+                (
+                    w + ix,
+                    iy,
+                ),
+                Side::B
+            ),
+            Side::F => (
+                (
+                    w + ix,
+                    iy,
+                ),
+                Side::R,
+            ),
+            Side::U => (
+                (
+                    iy,
+                    -ix - 1,
+                ),
+                Side::L,
+            ),
+            Side::D => (
+                (
+                    w - iy - 1,
+                    w + ix,
+                ),
+                Side::L,
+            ),
         }
-    } else if ix >= width  && iy < width {
-        // y is in range, wrap x
+    } else if ix >= w && iy >= 0 && iy < w {
+        // x is too large, y is in range
+        // move right
         match side {
-            Side::L => {
-                ix = 0;
-                side = Side::B;
-            },
-            Side::B => {
-                ix = 0;
-                side = Side::R;
-            },
-            Side::R => {
-                ix = 0;
-                side = Side::F;
-            },
-            Side::F => {
-                ix = 0;
-                side = Side::L;
-            },
-            Side::U => {
-                ix = width - 1 - iy;
-                iy = 0;
-                side = Side::R;
-            },
-            Side::D => {
-                ix = iy;
-                iy = width - 1;
-                side = Side::R;
-            },
+            Side::L => (
+                (
+                    ix - w,
+                    iy,
+                ),
+                Side::B,
+            ),
+            Side::B => (
+                (
+                    ix - w,
+                    iy,
+                ),
+                Side::R,
+            ),
+            Side::R => (
+                (
+                    ix - w,
+                    iy,
+                ),
+                Side::F,
+            ),
+            Side::F => (
+                (
+                    ix - w,
+                    iy,
+                ),
+                Side::L,
+            ),
+            Side::U => (
+                (
+                    w - iy - 1,
+                    ix - w,
+                ),
+                Side::R,
+            ),
+            Side::D => (
+                (
+                    iy,
+                    2 * w - ix - 1,
+                ),
+                Side::R,
+            ),
         }
-    } else if ix == width && iy == width {
-        // bottom right corner, use special wrap (only enforcable by caller)
-        return None;
+    } else if ix >= 0 && ix < w && iy < 0 {
+        // x is in range, y is too small
+        // move up
+        match side {
+            Side::L => (
+                (
+                    -iy - 1,
+                    ix,
+                ),
+                Side::U,
+            ),
+            Side::B => (
+                (
+                    ix,
+                    w + iy,
+                ),
+                Side::U,
+            ),
+            Side::R => (
+                (
+                    w + iy,
+                    w - ix - 1,
+                ),
+                Side::U,
+            ),
+            Side::F => (
+                (
+                    w - ix - 1,
+                    -iy - 1,
+                ),
+                Side::U,
+            ),
+            Side::U => (
+                (
+                    w - ix - 1,
+                    -iy - 1,
+                ),
+                Side::F,
+            ),
+            Side::D => (
+                (
+                    ix,
+                    w + iy,
+                ),
+                Side::B,
+            ),
+        }
+    } else if ix >= 0 && ix < w && iy >= w {
+        // x is in range, y is too large
+        // move down
+        match side {
+            Side::L => (
+                (
+                    iy - w,
+                    w - ix - 1,
+                ),
+                Side::D,
+            ),
+            Side::B => (
+                (
+                    ix,
+                    iy - w,
+                ),
+                Side::D,
+            ),
+            Side::R => (
+                (
+                    2 * w - iy - 1,
+                    ix,
+                ),
+                Side::D,
+            ),
+            Side::F => (
+                (
+                    w - ix - 1,
+                    2 * w - iy - 1,
+                ),
+                Side::D,
+            ),
+            Side::U => (
+                (
+                    ix,
+                    iy - w,
+                ),
+                Side::B,
+            ),
+            Side::D => (
+                (
+                    w - ix - 1,
+                    2 * w - iy - 1,
+                ),
+                Side::F,
+            ),
+        }
     } else {
-        // both x and y aren't in range, wrap both
-        eprintln!("stacktrace:\n{}", std::backtrace::Backtrace::force_capture());
-        unreachable!("if this branch is hit, then i miscalculated things. {} {} {}", ix, iy, width);
-    }
+        // neither is in range. client must wrap x and y themself
+        todo!("handle each corner differently")
+        //return None;
+    };
 
-    Some(((ix, iy), side))
+    eprintln!("poi {:?} {:?}", (new_ix, new_iy), new_side);
+
+    Ok(((new_ix as usize, new_iy as usize), new_side))
 }
 
 fn sample_height(
-    ix: usize,
-    iy: usize,
+    i: (isize, isize),
     width: usize,
     side: Side,
     sides: &[ProtoSide],
 ) -> f32 {
-    let ix = usize::min(ix, width);
-    let iy = usize::min(iy, width);
-
-    match remap_erosion_index((ix, iy), width, side) {
-        Some(((ix, iy), side)) => {
+    eprintln!("sample height {:?} {:?}",i, side);
+    match remap_erosion_index(i, width, side) {
+        Ok(((ix, iy), side)) => {
             let side_index = side.to_index();
             let h = sides[side_index].height_map.borrow().get(ix, iy);
             h.height
         },
-        None => {
-            let val1 = sample_height(ix - 1, iy, width, side, sides);
-            let val2 = sample_height(ix, iy - 1, width, side, sides);
-            (val1 + val2) / 2.0
+        Err((((lix, liy), lside), ((rix, riy), rside))) => {
+            let lside_index = lside.to_index();
+            let lh = sides[lside_index].height_map.borrow().get(lix, liy);
+            let lval = lh.height;
+
+            let rside_index = rside.to_index();
+            let rh = sides[rside_index].height_map.borrow().get(rix, riy);
+            let rval = rh.height;
+
+            (lval + rval) / 2.0
         },
     }
 
@@ -1776,17 +1907,28 @@ fn calculate_gradient_and_height(
     sides: &[ProtoSide],
     eko: ErosionKernelOrigin,
 ) -> (Vec2, f32) {
-    let coord_x = pos.x() as usize;
-    let coord_y = pos.y() as usize;
+    let coord_x = pos.x() as isize;
+    let coord_y = pos.y() as isize;
 
     let x = pos.x() - coord_x as f32;
     let y = pos.y() - coord_y as f32;
 
-    todo!("use eko here to find the correct nw, ne, sw and se indices");
-    let nw = sample_height(coord_x, coord_y, width, side, sides);
-    let ne = sample_height(coord_x + 1, coord_y, width, side, sides);
-    let sw = sample_height(coord_x, coord_y + 1, width, side, sides);
-    let se = sample_height(coord_x + 1, coord_y + 1, width, side, sides);
+    let (onw, one, osw, ose) = match eko {
+        ErosionKernelOrigin::NW => ((0,0),(1,0),(0,1),(1,1)),
+        ErosionKernelOrigin::NE => ((-1,0),(0,0),(-1,1),(0,1)),
+        ErosionKernelOrigin::SW => ((0,-1),(1,-1),(0,0),(1,0)),
+        ErosionKernelOrigin::SE => ((-1,-1),(0,-1),(-1,0),(0,0)),
+    };
+
+    let inw = (coord_x + onw.0, coord_y + onw.1);
+    let ine = (coord_x + one.0, coord_y + one.1);
+    let isw = (coord_x + osw.0, coord_y + osw.1);
+    let ise = (coord_x + ose.0, coord_y + ose.1);
+
+    let nw = sample_height(inw, width, side, sides);
+    let ne = sample_height(ine, width, side, sides);
+    let sw = sample_height(isw, width, side, sides);
+    let se = sample_height(ise, width, side, sides);
 
     let gradient_x = (ne - nw) * (1.0 - y) + (se * sw) * y;
     let gradient_y = (sw - nw) * (1.0 - x) + (se - ne) * x;
@@ -1802,27 +1944,28 @@ fn calculate_gradient_and_height(
 }
 
 fn deposit_sediment(
-    ipos: (usize, usize),
+    ipos: (isize, isize),
     width: usize,
     side: Side,
     sides: &[ProtoSide],
     sediment: f32,
 ) {
-    match remap_erosion_index(ipos, width, side) {
-        Some(((ix, iy), side)) => {
-            let side_index = side.to_index();
-            let mut h = sides[side_index].height_map.borrow().get(ix, iy);
-            h.height += sediment;
-            let side = &sides[side_index];
-            let height_map = &side.height_map;
-            let mut height_map = height_map.borrow_mut();
-            height_map.set(ix, iy, h);
-        },
-        None => {
-            let (ix, iy) = ipos;
+    todo!("deposit sediment");
+    //match remap_erosion_index(ipos, width, side) {
+    //    Some(((ix, iy), side)) => {
+    //        let side_index = side.to_index();
+    //        let mut h = sides[side_index].height_map.borrow().get(ix, iy);
+    //        h.height += sediment;
+    //        let side = &sides[side_index];
+    //        let height_map = &side.height_map;
+    //        let mut height_map = height_map.borrow_mut();
+    //        height_map.set(ix, iy, h);
+    //    },
+    //    None => {
+    //        let (ix, iy) = ipos;
 
-            deposit_sediment((ix - 1, iy), width, side, sides, sediment * 0.5);
-            deposit_sediment((ix, iy - 1), width, side, sides, sediment * 0.5);
-        }
-    }
+    //        deposit_sediment((ix - 1, iy), width, side, sides, sediment * 0.5);
+    //        deposit_sediment((ix, iy - 1), width, side, sides, sediment * 0.5);
+    //    }
+    //}
 }
