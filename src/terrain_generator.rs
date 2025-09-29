@@ -1332,7 +1332,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
                 sediment -= amount_to_deposit;
 
-                eprintln!("use eko here to find the correct nw, ne, sw, and se indices");
+                todo!("use eko here to find the correct nw, ne, sw, and se indices");
                 //let deposit_nw = amount_to_deposit * (1.0 - cell_offset.x()) * (1.0 - cell_offset.y());
                 //let deposit_ne = amount_to_deposit * cell_offset.x() * (1.0 - cell_offset.y());
                 //let deposit_sw = amount_to_deposit * (1.0 - cell_offset.x()) * cell_offset.y();
@@ -1668,8 +1668,6 @@ fn remap_erosion_index(
     let (ix, iy) = i;
     let w = width as isize;
 
-    eprintln!("hoi {:?} {:?}", i, side);
-
     let ((new_ix, new_iy), new_side) = if ix >= 0 && ix < w && iy >= 0 && iy < w {
         // x and y are in range, nothing needs to be wrapped
         (i, side)
@@ -1863,11 +1861,22 @@ fn remap_erosion_index(
         }
     } else {
         // neither is in range. client must wrap x and y themself
-        todo!("handle each corner differently")
-        //return None;
-    };
+        let clamped_ix = isize::clamp(ix, 0, w - 1);
+        let clamped_iy = isize::clamp(iy, 0, w - 1);
 
-    eprintln!("poi {:?} {:?}", (new_ix, new_iy), new_side);
+        let val1 = remap_erosion_index(
+            (clamped_ix, iy),
+            width,
+            side,
+        ).unwrap();
+        let val2 = remap_erosion_index(
+            (ix, clamped_iy),
+            width,
+            side,
+        ).unwrap();
+
+        return Err((val1, val2));
+    };
 
     Ok(((new_ix as usize, new_iy as usize), new_side))
 }
@@ -1878,7 +1887,6 @@ fn sample_height(
     side: Side,
     sides: &[ProtoSide],
 ) -> f32 {
-    eprintln!("sample height {:?} {:?}",i, side);
     match remap_erosion_index(i, width, side) {
         Ok(((ix, iy), side)) => {
             let side_index = side.to_index();
