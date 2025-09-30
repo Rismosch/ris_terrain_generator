@@ -1,0 +1,25 @@
+
+L => B
+L => F
+L => U
+L => D
+B => L x
+B => R
+B => U
+B => D
+R => B
+R => F
+R => U
+R => D
+F => L
+F => R
+F => U
+F => D
+U => L
+U => R
+U => F
+U => B
+D => L
+D => R
+D => F
+D => B

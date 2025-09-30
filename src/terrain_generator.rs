@@ -913,6 +913,28 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     //}
     //eprintln!();
     
+    eprintln!("produce debug heightmap...");
+    for side in sides.iter() {
+        let mut heightmap = side.height_map.borrow_mut();
+        let side = heightmap.side;
+        for (i, v) in heightmap.values.iter_mut().enumerate() {
+            let ix = i % width;
+            let iy = i / width;
+            let w = width as f32;
+            let x = ix as f32 / w;
+            let y = iy as f32 / w;
+
+            match side {
+                Side::L => v.height = -0.5 * x + 1.0,
+                Side::B => v.height = -0.5 * x + 0.5,
+                //Side::L => v.height = 0.5 * x,
+                //Side::B => v.height = 0.5 * x + 0.5,
+                _ => v.height = 0.0,
+            }
+        }
+
+    }
+
     eprintln!("find erosion stride...");
 
     let phi = (1.0 + f32::sqrt(5.0)) / 2.0; // golden ratio
@@ -956,10 +978,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
         idrop = (idrop + stride) % modulo;
 
-        let side = idrop / resolution;
-        let mut side = sides[side].height_map.borrow().side;
+        //let side = idrop / resolution;
+        //let mut side = sides[side].height_map.borrow().side;
+        //let index = idrop % resolution;
+        let mut side = Side::L;
+        let index = width * width / 2 - width / 4;
 
-        let index = idrop % resolution;
         let mut pos = Vec2(
             (index % width) as f32,
             (index / width) as f32,
@@ -972,18 +996,30 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
         let mut path = Vec::new();
 
+        let debug_erosion = true;
+        let debug_break_at = 2;
+        let debug_log = |s: String| {
+            if !debug_erosion {
+                return;
+            }
+
+            eprintln!("{}", s);
+        };
+
         for lifetime in 0..erosion_max_lifetime {
             let Vec2(x, y) = pos;
-            let node_x = if x == width as f32 {
-                x - 0.001
-            } else {
-                x
-            } as usize;
-            let node_y = if y == width as f32 {
-                y - 0.001
-            } else {
-                y
-            } as usize;
+            //let node_x = if x == width as f32 {
+            //    x - 0.001
+            //} else {
+            //    x
+            //} as usize;
+            //let node_y = if y == width as f32 {
+            //    y - 0.001
+            //} else {
+            //    y
+            //} as usize;
+            let node_x = x as usize;
+            let node_y = y as usize;
 
             let cell_offset = Vec2(
                 pos.x() - node_x as f32,
@@ -1000,60 +1036,63 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
             dir.set_x(dir.x() * erosion_inertia - gradient.x() * (1.0 - erosion_inertia));
             dir.set_y(dir.y() * erosion_inertia - gradient.y() * (1.0 - erosion_inertia));
-            let len = f32::max(0.01, dir.length());
-            dir /= len;
-            pos += dir;
+            //let len = f32::max(0.01, dir.length());
+            //dir /= len;
+            let dir_ = dir.normalize();
+            if dir.is_nan().any() {
+                break;
+            }
+            let pos_ = pos + dir;
+            eprintln!("{} {} dir {:?}\tdir' {:?}\tpos {:?}\tpos' {:?}\tgrad {:?}", i, side, dir, dir_, pos, pos_, gradient);
+            pos = pos_;
+            dir = dir_;
 
             // droplet may crossed to another side. we need to remap
             loop {
-                let width = width as f32;
+                let w = width as f32;
 
                 let Vec2(x, y) = pos;
 
                 if x < 0.0 {
                     // droplet moved left
-                    // x is negative, negate to make math more intuitive
-                    let x = -x;
                     match side {
                         Side::L => {
                             side = Side::F;
                             pos = Vec2(
-                                width - x,
+                                w + x,
                                 y,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug this {}", i));
                         },
                         Side::B => {
                             side = Side::L;
                             pos = Vec2(
-                                width - x,
+                                w + x,
                                 y,
                             );
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::R => {
                             side = Side::B;
                             pos = Vec2(
-                                width - x,
+                                w + x,
                                 y,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::F => {
                             side = Side::R;
                             pos = Vec2(
-                                width - x,
+                                w + x,
                                 y,
                             );
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::U => {
-
-                            if lifetime == 12 {
-                                eprintln!("hoi {:?} {:?}", pos, dir);
-                            }
                             side = Side::L;
                             pos = Vec2(
                                 y,
-                                x,
+                                -x,
                             );
                             // rotate dir ccw
                             dir = Vec2(
@@ -1061,16 +1100,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_ccw();
-                            if lifetime == 12 {
-                                eprintln!("poi {:?} {:?}", pos, dir);
-                            }
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::D => {
                             side = Side::L;
                             pos = Vec2(
-                                width - y,
-                                width - x,
+                                w - y,
+                                w + x,
                             );
                             // rotate dir cw
                             dir = Vec2(
@@ -1078,48 +1114,49 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 -dir.x(),
                             );
                             eko.rotate_cw();
+                            debug_log(format!("debug_this {}", i));
                         },
                     }
-                } else if x > width {
+                } else if x > w {
                     // droplet moved right
-                    // mod x back into the side to make math more intuitive
                     match side {
                         Side::L => {
                             side = Side::B;
                             pos = Vec2(
-                                x - width,
+                                x - w,
                                 y,
                             );
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::B => {
                             side = Side::R;
                             pos = Vec2(
-                                x - width,
+                                x - w,
                                 y,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::R => {
                             side = Side::F;
                             pos = Vec2(
-                                x - width,
+                                x - w,
                                 y,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::F => {
                             side = Side::L;
                             pos = Vec2(
-                                x - width,
+                                x - w,
                                 y,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::U => {
                             side = Side::R;
                             pos = Vec2(
-                                width - y,
-                                x - width,
+                                w - y,
+                                x - w,
                             );
                             // rotate dir cw
                             dir = Vec2(
@@ -1127,13 +1164,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 -dir.x(),
                             );
                             eko.rotate_cw();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::D => {
                             side = Side::R;
                             pos = Vec2(
                                 y,
-                                2.0 * width - x,
+                                2.0 * w - x,
                             );
                             // rotate dir ccw
                             dir = Vec2(
@@ -1141,18 +1178,16 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_ccw();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                     }
                 } else if y < 0.0 {
                     // droplet moved up
-                    // y is negative, negate to make math more intuitive
-                    let y = -y;
                     match side {
                         Side::L => {
                             side = Side::U;
                             pos = Vec2(
-                                y,
+                                -y,
                                 x,
                             );
                             // rotate dir cw
@@ -1161,21 +1196,21 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 -dir.x(),
                             );
                             eko.rotate_cw();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::B => {
                             side = Side::U;
                             pos = Vec2(
                                 x,
-                                width - y,
+                                w + y,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::R => {
                             side = Side::U;
                             pos = Vec2(
-                                width - y,
-                                width - x,
+                                w + y,
+                                w - x,
                             );
                             // rotate dir ccw
                             dir = Vec2(
@@ -1183,13 +1218,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_ccw();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::F => {
                             side = Side::U;
                             pos = Vec2(
-                                width - x,
-                                y,
+                                w - x,
+                                -y,
                             );
                             // rotate dir 180°
                             dir = Vec2(
@@ -1197,13 +1232,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_180();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::U => {
                             side = Side::F;
                             pos = Vec2(
-                                width - x,
-                                y,
+                                w - x,
+                                -y,
                             );
                             // rotate dir 180°
                             dir = Vec2(
@@ -1211,26 +1246,26 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_180();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::D => {
                             side = Side::B;
                             pos = Vec2(
                                 x,
-                                width - y,
+                                w + y,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                     }
-                } else if y > width {
+                } else if y > w {
                     // droplet moved down
                     match side {
                         Side::L => {
 
                             side = Side::D;
                             pos = Vec2(
-                                y - width,
-                                width - x,
+                                y - w,
+                                w - x,
                             );
                             // rotate dir ccw
                             dir = Vec2(
@@ -1238,19 +1273,20 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_ccw();
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::B => {
                             side = Side::D;
                             pos = Vec2(
                                 x,
-                                y - width,
+                                y - w,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::R => {
                             side = Side::D;
                             pos = Vec2(
-                                2.0 * width - y,
+                                2.0 * w - y,
                                 x,
                             );
                             // rotate dir cw
@@ -1259,13 +1295,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 -dir.x(),
                             );
                             eko.rotate_cw();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::F => {
                             side = Side::D;
                             pos = Vec2(
-                                width - x,
-                                2.0 * width - y,
+                                w - x,
+                                2.0 * w - y,
                             );
                             // rotate dir 180°
                             dir = Vec2(
@@ -1273,21 +1309,21 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_180();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::U => {
                             side = Side::B;
                             pos = Vec2(
                                 x,
-                                y - width,
+                                y - w,
                             );
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                         Side::D => {
                             side = Side::F;
                             pos = Vec2(
-                                width - x,
-                                2.0 * width - y,
+                                w - x,
+                                2.0 * w - y,
                             );
                             // rotate dir 180°
                             dir = Vec2(
@@ -1295,7 +1331,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_180();
-                            eprintln!("debug this {}", i);
+                            debug_log(format!("debug_this {}", i));
                         },
                     }
                 } else {
@@ -1303,11 +1339,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 }
             }
 
-            path.push((pos, side));
+            path.push((pos, dir, side, eko));
 
-            if dir.x() == 0.0 && dir.y() == 0.0 {
-                break;
-            }
+            //if dir.x() == 0.0 && dir.y() == 0.0 {
+            //    break;
+            //}
 
             let (_, new_height) = calculate_gradient_and_height(
                 pos,
@@ -1332,7 +1368,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
                 sediment -= amount_to_deposit;
 
-                todo!("use eko here to find the correct nw, ne, sw, and se indices");
+                //todo!("use eko here to find the correct nw, ne, sw, and se indices");
                 //let deposit_nw = amount_to_deposit * (1.0 - cell_offset.x()) * (1.0 - cell_offset.y());
                 //let deposit_ne = amount_to_deposit * cell_offset.x() * (1.0 - cell_offset.y());
                 //let deposit_sw = amount_to_deposit * (1.0 - cell_offset.x()) * cell_offset.y();
@@ -1372,11 +1408,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     -delta_height,
                 );
 
-                ////if node_y * width + node_x == 4229 {
-                //if i == 57316 || i == 57315 {
-                //    eprintln!("err {} {:?}", i, pos);
-                //}
-
                 let mut h = sides[side.to_index()].height_map.borrow().get(node_x, node_y);
                 let delta_sediment = if h.height < amount_to_erode {
                     h.height
@@ -1395,21 +1426,17 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             water *= 1.0 - erosion_evaporate_speed;
         }
 
-        // 22
-        // 23
-        // 29
-        // 30
-        if i == 21 && false {
-            let mut csv = format!("n;lx;ly;bx;by;rx;ry;fx;fy;ux;uy;dx;dy;\n");
+        if i == debug_break_at && debug_erosion {
+            let mut csv = format!("n;lx;ly;bx;by;rx;ry;fx;fy;ux;uy;dx;dy;dirx;diry;eko;\n");
 
-            for (i, (Vec2(x, y), side)) in path.iter().enumerate() {
+            for (i, (Vec2(x, y), Vec2(dir_x, dir_y), side, eko)) in path.iter().enumerate() {
                 let to_append = match side {
-                    Side::L => format!("{};{};{};;;;;;;;;;;\n", i, x, -y),
-                    Side::B => format!("{};;;{};{};;;;;;;;;\n", i, x, -y),
-                    Side::R => format!("{};;;;;{};{};;;;;;;\n", i, x, -y),
-                    Side::F => format!("{};;;;;;;{};{};;;;;\n", i, x, -y),
-                    Side::U => format!("{};;;;;;;;;{};{};;;\n", i, x, -y),
-                    Side::D => format!("{};;;;;;;;;;;{};{};\n", i, x, -y),
+                    Side::L => format!("{};{};{};;;;;;;;;;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
+                    Side::B => format!("{};;;{};{};;;;;;;;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
+                    Side::R => format!("{};;;;;{};{};;;;;;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
+                    Side::F => format!("{};;;;;;;{};{};;;;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
+                    Side::U => format!("{};;;;;;;;;{};{};;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
+                    Side::D => format!("{};;;;;;;;;;;{};{};{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
                 };
 
                 csv.push_str(&to_append);
@@ -1537,7 +1564,7 @@ struct Continent {
 
 // erosion samples 4 cells at different steps. when the droplet goes over a cube edge, the kernel
 // may be rotated, and thus changing the "origin cell" that the droplet may find itself in.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum ErosionKernelOrigin {
     NW,
     NE,
