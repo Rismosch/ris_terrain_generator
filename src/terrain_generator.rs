@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::f32::consts::PI;
-use std::io::Write;
 
 use crate::matrix::Mat2;
 use crate::quaternion::Quat;
@@ -82,7 +81,6 @@ impl From<usize> for Side {
 }
 
 pub struct Args {
-    pub only_generate_first_face: bool,
     pub seed: Seed,
     pub width: usize,
     pub continent_count: usize,
@@ -109,7 +107,6 @@ pub struct HeightMap {
 
 pub fn run(args: Args) -> Vec<HeightMap> {
     let Args {
-        only_generate_first_face,
         seed,
         width,
         continent_count,
@@ -657,8 +654,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
                     let origin_pixel = continent.origin.clone();
 
-                    let o =
-                        position_on_sphere((origin_pixel.ix, origin_pixel.iy), width, origin_pixel.side);
+                    let o = position_on_sphere(
+                        (origin_pixel.ix, origin_pixel.iy),
+                        width,
+                        origin_pixel.side,
+                    );
                     let d = p - o;
                     let d_ = p_ - o;
 
@@ -692,10 +692,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     break;
                 }
             }
-        }
-
-        if only_generate_first_face {
-            break;
         }
     }
 
@@ -840,10 +836,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 }
             }
         }
-
-        if only_generate_first_face {
-            break;
-        }
     } // end sides
 
     // normalize and apply weight to heightmap
@@ -887,7 +879,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     //    }
 
     //}
-    
+
     eprintln!("find erosion stride...");
 
     let phi = (1.0 + f32::sqrt(5.0)) / 2.0; // golden ratio
@@ -923,10 +915,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     for i in 0..iterations {
         if i % 10_000 == 0 {
             let progress = i as f32 / iterations as f32 * 100.0;
-            eprintln!(
-                "erode... {}%",
-                progress,
-            );
+            eprintln!("erode... {}%", progress,);
         }
 
         idrop = (idrop + stride) % modulo;
@@ -935,10 +924,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         let mut side = sides[side].height_map.borrow().side;
         let index = idrop % resolution;
 
-        let mut pos = Vec2(
-            (index % width) as f32,
-            (index / width) as f32,
-        );
+        let mut pos = Vec2((index % width) as f32, (index / width) as f32);
         let mut dir = Vec2::zero();
         let mut eko = ErosionKernelOrigin::default();
         let mut speed = erosion_start_speed;
@@ -946,13 +932,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         let mut sediment = 0.0;
 
         for _lifetime in 0..erosion_max_lifetime {
-            let (gradient, height) = calculate_gradient_and_height(
-                pos,
-                width,
-                side,
-                &sides,
-                eko,
-            );
+            let (gradient, height) = calculate_gradient_and_height(pos, width, side, &sides, eko);
 
             dir.set_x(dir.x() * erosion_inertia - gradient.x() * (1.0 - erosion_inertia));
             dir.set_y(dir.y() * erosion_inertia - gradient.y() * (1.0 - erosion_inertia));
@@ -975,270 +955,155 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     match side {
                         Side::L => {
                             side = Side::F;
-                            pos = Vec2(
-                                w + x,
-                                y,
-                            );
-                        },
+                            pos = Vec2(w + x, y);
+                        }
                         Side::B => {
                             side = Side::L;
-                            pos = Vec2(
-                                w + x,
-                                y,
-                            );
-                        },
+                            pos = Vec2(w + x, y);
+                        }
                         Side::R => {
                             side = Side::B;
-                            pos = Vec2(
-                                w + x,
-                                y,
-                            );
-                        },
+                            pos = Vec2(w + x, y);
+                        }
                         Side::F => {
                             side = Side::R;
-                            pos = Vec2(
-                                w + x,
-                                y,
-                            );
-                        },
+                            pos = Vec2(w + x, y);
+                        }
                         Side::U => {
                             side = Side::L;
-                            pos = Vec2(
-                                y,
-                                -x,
-                            );
+                            pos = Vec2(y, -x);
                             // rotate dir ccw
-                            dir = Vec2(
-                                -dir.y(),
-                                dir.x(),
-                            );
+                            dir = Vec2(-dir.y(), dir.x());
                             eko.rotate_ccw();
-                        },
+                        }
                         Side::D => {
                             side = Side::L;
-                            pos = Vec2(
-                                w - y,
-                                w + x,
-                            );
+                            pos = Vec2(w - y, w + x);
                             // rotate dir cw
-                            dir = Vec2(
-                                dir.y(),
-                                -dir.x(),
-                            );
+                            dir = Vec2(dir.y(), -dir.x());
                             eko.rotate_cw();
-                        },
+                        }
                     }
                 } else if x > w {
                     // droplet moved right
                     match side {
                         Side::L => {
                             side = Side::B;
-                            pos = Vec2(
-                                x - w,
-                                y,
-                            );
-                        },
+                            pos = Vec2(x - w, y);
+                        }
                         Side::B => {
                             side = Side::R;
-                            pos = Vec2(
-                                x - w,
-                                y,
-                            );
-                        },
+                            pos = Vec2(x - w, y);
+                        }
                         Side::R => {
                             side = Side::F;
-                            pos = Vec2(
-                                x - w,
-                                y,
-                            );
-                        },
+                            pos = Vec2(x - w, y);
+                        }
                         Side::F => {
                             side = Side::L;
-                            pos = Vec2(
-                                x - w,
-                                y,
-                            );
-                        },
+                            pos = Vec2(x - w, y);
+                        }
                         Side::U => {
                             side = Side::R;
-                            pos = Vec2(
-                                w - y,
-                                x - w,
-                            );
+                            pos = Vec2(w - y, x - w);
                             // rotate dir cw
-                            dir = Vec2(
-                                dir.y(),
-                                -dir.x(),
-                            );
+                            dir = Vec2(dir.y(), -dir.x());
                             eko.rotate_cw();
-                        },
+                        }
                         Side::D => {
                             side = Side::R;
-                            pos = Vec2(
-                                y,
-                                2.0 * w - x,
-                            );
+                            pos = Vec2(y, 2.0 * w - x);
                             // rotate dir ccw
-                            dir = Vec2(
-                                -dir.y(),
-                                dir.x(),
-                            );
+                            dir = Vec2(-dir.y(), dir.x());
                             eko.rotate_ccw();
-                        },
+                        }
                     }
                 } else if y < 0.0 {
                     // droplet moved up
                     match side {
                         Side::L => {
                             side = Side::U;
-                            pos = Vec2(
-                                -y,
-                                x,
-                            );
+                            pos = Vec2(-y, x);
                             // rotate dir cw
-                            dir = Vec2(
-                                dir.y(),
-                                -dir.x(),
-                            );
+                            dir = Vec2(dir.y(), -dir.x());
                             eko.rotate_cw();
-                        },
+                        }
                         Side::B => {
                             side = Side::U;
-                            pos = Vec2(
-                                x,
-                                w + y,
-                            );
-                        },
+                            pos = Vec2(x, w + y);
+                        }
                         Side::R => {
                             side = Side::U;
-                            pos = Vec2(
-                                w + y,
-                                w - x,
-                            );
+                            pos = Vec2(w + y, w - x);
                             // rotate dir ccw
-                            dir = Vec2(
-                                -dir.y(),
-                                dir.x(),
-                            );
+                            dir = Vec2(-dir.y(), dir.x());
                             eko.rotate_ccw();
-                        },
+                        }
                         Side::F => {
                             side = Side::U;
-                            pos = Vec2(
-                                w - x,
-                                -y,
-                            );
+                            pos = Vec2(w - x, -y);
                             // rotate dir 180°
-                            dir = Vec2(
-                                dir.y(),
-                                dir.x(),
-                            );
+                            dir = Vec2(dir.y(), dir.x());
                             eko.rotate_180();
-                        },
+                        }
                         Side::U => {
                             side = Side::F;
-                            pos = Vec2(
-                                w - x,
-                                -y,
-                            );
+                            pos = Vec2(w - x, -y);
                             // rotate dir 180°
-                            dir = Vec2(
-                                dir.y(),
-                                dir.x(),
-                            );
+                            dir = Vec2(dir.y(), dir.x());
                             eko.rotate_180();
-                        },
+                        }
                         Side::D => {
                             side = Side::B;
-                            pos = Vec2(
-                                x,
-                                w + y,
-                            );
-                        },
+                            pos = Vec2(x, w + y);
+                        }
                     }
                 } else if y > w {
                     // droplet moved down
                     match side {
                         Side::L => {
-
                             side = Side::D;
-                            pos = Vec2(
-                                y - w,
-                                w - x,
-                            );
+                            pos = Vec2(y - w, w - x);
                             // rotate dir ccw
-                            dir = Vec2(
-                                -dir.y(),
-                                dir.x(),
-                            );
+                            dir = Vec2(-dir.y(), dir.x());
                             eko.rotate_ccw();
-                        },
+                        }
                         Side::B => {
                             side = Side::D;
-                            pos = Vec2(
-                                x,
-                                y - w,
-                            );
-                        },
+                            pos = Vec2(x, y - w);
+                        }
                         Side::R => {
                             side = Side::D;
-                            pos = Vec2(
-                                2.0 * w - y,
-                                x,
-                            );
+                            pos = Vec2(2.0 * w - y, x);
                             // rotate dir cw
-                            dir = Vec2(
-                                dir.y(),
-                                -dir.x(),
-                            );
+                            dir = Vec2(dir.y(), -dir.x());
                             eko.rotate_cw();
-                        },
+                        }
                         Side::F => {
                             side = Side::D;
-                            pos = Vec2(
-                                w - x,
-                                2.0 * w - y,
-                            );
+                            pos = Vec2(w - x, 2.0 * w - y);
                             // rotate dir 180°
-                            dir = Vec2(
-                                dir.y(),
-                                dir.x(),
-                            );
+                            dir = Vec2(dir.y(), dir.x());
                             eko.rotate_180();
-                        },
+                        }
                         Side::U => {
                             side = Side::B;
-                            pos = Vec2(
-                                x,
-                                y - w,
-                            );
-                        },
+                            pos = Vec2(x, y - w);
+                        }
                         Side::D => {
                             side = Side::F;
-                            pos = Vec2(
-                                w - x,
-                                2.0 * w - y,
-                            );
+                            pos = Vec2(w - x, 2.0 * w - y);
                             // rotate dir 180°
-                            dir = Vec2(
-                                dir.y(),
-                                dir.x(),
-                            );
+                            dir = Vec2(dir.y(), dir.x());
                             eko.rotate_180();
-                        },
+                        }
                     }
                 } else {
                     break;
                 }
             }
 
-            let (_, new_height) = calculate_gradient_and_height(
-                pos,
-                width,
-                side,
-                &sides,
-                eko,
-            );
+            let (_, new_height) = calculate_gradient_and_height(pos, width, side, &sides, eko);
             let delta_height = new_height - height;
 
             let sediment_capacity = f32::max(
@@ -1261,12 +1126,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let weight2 = 1.0 - c.x() * c.y();
                 let weight3 = c.x() * c.y();
 
-                let (
-                    weight_nw,
-                    weight_ne,
-                    weight_sw,
-                    weight_se,
-                ) = match eko {
+                let (weight_nw, weight_ne, weight_sw, weight_se) = match eko {
                     ErosionKernelOrigin::NW => (weight0, weight1, weight2, weight3),
                     ErosionKernelOrigin::NE => (weight1, weight0, weight3, weight2),
                     ErosionKernelOrigin::SW => (weight2, weight3, weight0, weight1),
@@ -1285,34 +1145,10 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let isw = (i.0 + osw.0, i.1 + osw.1);
                 let ise = (i.0 + ose.0, i.1 + ose.1);
 
-                deposit_sediment(
-                    inw,
-                    width,
-                    side,
-                    &sides,
-                    deposit_nw,
-                );
-                deposit_sediment(
-                    ine,
-                    width,
-                    side,
-                    &sides,
-                    deposit_ne,
-                );
-                deposit_sediment(
-                    isw,
-                    width,
-                    side,
-                    &sides,
-                    deposit_sw,
-                );
-                deposit_sediment(
-                    ise,
-                    width,
-                    side,
-                    &sides,
-                    deposit_se,
-                );
+                deposit_sediment(inw, width, side, &sides, deposit_nw);
+                deposit_sediment(ine, width, side, &sides, deposit_ne);
+                deposit_sediment(isw, width, side, &sides, deposit_sw);
+                deposit_sediment(ise, width, side, &sides, deposit_se);
             } else {
                 let amount_to_erode = f32::min(
                     (sediment_capacity - sediment) * erosion_erode_speed,
@@ -1324,7 +1160,10 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let node_x = usize::min(node_x, width - 1);
                 let node_y = usize::min(node_y, width - 1);
 
-                let mut h = sides[side.to_index()].height_map.borrow().get(node_x, node_y);
+                let mut h = sides[side.to_index()]
+                    .height_map
+                    .borrow()
+                    .get(node_x, node_y);
                 let delta_sediment = if h.height < amount_to_erode {
                     h.height
                 } else {
@@ -1332,7 +1171,10 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 };
                 h.height -= delta_sediment;
                 sediment += delta_sediment;
-                sides[side.to_index()].height_map.borrow_mut().set(node_x, node_y, h);
+                sides[side.to_index()]
+                    .height_map
+                    .borrow_mut()
+                    .set(node_x, node_y, h);
             }
 
             speed = f32::sqrt(f32::max(
@@ -1481,12 +1323,19 @@ impl ErosionKernelOrigin {
     }
 
     // returns offsets for (nw, ne, sw, se)
-    fn get_offsets(self) -> ((isize, isize), (isize, isize), (isize, isize), (isize, isize)) {
+    fn get_offsets(
+        self,
+    ) -> (
+        (isize, isize),
+        (isize, isize),
+        (isize, isize),
+        (isize, isize),
+    ) {
         match self {
-            ErosionKernelOrigin::NW => ((0,0),(1,0),(0,1),(1,1)),
-            ErosionKernelOrigin::NE => ((-1,0),(0,0),(-1,1),(0,1)),
-            ErosionKernelOrigin::SW => ((0,-1),(1,-1),(0,0),(1,0)),
-            ErosionKernelOrigin::SE => ((-1,-1),(0,-1),(-1,0),(0,0)),
+            ErosionKernelOrigin::NW => ((0, 0), (1, 0), (0, 1), (1, 1)),
+            ErosionKernelOrigin::NE => ((-1, 0), (0, 0), (-1, 1), (0, 1)),
+            ErosionKernelOrigin::SW => ((0, -1), (1, -1), (0, 0), (1, 0)),
+            ErosionKernelOrigin::SE => ((-1, -1), (0, -1), (-1, 0), (0, 0)),
         }
     }
 }
@@ -1556,7 +1405,7 @@ fn normalize(sides: &mut [ProtoSide], nan_replacement: Option<f32>) {
             for h in side.height_map.borrow_mut().values.iter_mut() {
                 h.height = match (h.height.is_nan(), nan_replacement) {
                     (true, Some(nan_replacement)) => nan_replacement,
-                    _ => (h.height - min) / (max - min)
+                    _ => (h.height - min) / (max - min),
                 };
             }
         }
@@ -1590,205 +1439,53 @@ fn remap_erosion_index(
         // x is too small, y is in range
         // move left
         match side {
-            Side::L => (
-                (
-                    w + ix,
-                    iy,
-                ),
-                Side::F,
-            ),
-            Side::B => (
-                (
-                    w + ix,
-                    iy,
-                ),
-                Side::L,
-            ),
-            Side::R => (
-                (
-                    w + ix,
-                    iy,
-                ),
-                Side::B
-            ),
-            Side::F => (
-                (
-                    w + ix,
-                    iy,
-                ),
-                Side::R,
-            ),
-            Side::U => (
-                (
-                    iy,
-                    -ix - 1,
-                ),
-                Side::L,
-            ),
-            Side::D => (
-                (
-                    w - iy - 1,
-                    w + ix,
-                ),
-                Side::L,
-            ),
+            Side::L => ((w + ix, iy), Side::F),
+            Side::B => ((w + ix, iy), Side::L),
+            Side::R => ((w + ix, iy), Side::B),
+            Side::F => ((w + ix, iy), Side::R),
+            Side::U => ((iy, -ix - 1), Side::L),
+            Side::D => ((w - iy - 1, w + ix), Side::L),
         }
     } else if ix >= w && iy >= 0 && iy < w {
         // x is too large, y is in range
         // move right
         match side {
-            Side::L => (
-                (
-                    ix - w,
-                    iy,
-                ),
-                Side::B,
-            ),
-            Side::B => (
-                (
-                    ix - w,
-                    iy,
-                ),
-                Side::R,
-            ),
-            Side::R => (
-                (
-                    ix - w,
-                    iy,
-                ),
-                Side::F,
-            ),
-            Side::F => (
-                (
-                    ix - w,
-                    iy,
-                ),
-                Side::L,
-            ),
-            Side::U => (
-                (
-                    w - iy - 1,
-                    ix - w,
-                ),
-                Side::R,
-            ),
-            Side::D => (
-                (
-                    iy,
-                    2 * w - ix - 1,
-                ),
-                Side::R,
-            ),
+            Side::L => ((ix - w, iy), Side::B),
+            Side::B => ((ix - w, iy), Side::R),
+            Side::R => ((ix - w, iy), Side::F),
+            Side::F => ((ix - w, iy), Side::L),
+            Side::U => ((w - iy - 1, ix - w), Side::R),
+            Side::D => ((iy, 2 * w - ix - 1), Side::R),
         }
     } else if ix >= 0 && ix < w && iy < 0 {
         // x is in range, y is too small
         // move up
         match side {
-            Side::L => (
-                (
-                    -iy - 1,
-                    ix,
-                ),
-                Side::U,
-            ),
-            Side::B => (
-                (
-                    ix,
-                    w + iy,
-                ),
-                Side::U,
-            ),
-            Side::R => (
-                (
-                    w + iy,
-                    w - ix - 1,
-                ),
-                Side::U,
-            ),
-            Side::F => (
-                (
-                    w - ix - 1,
-                    -iy - 1,
-                ),
-                Side::U,
-            ),
-            Side::U => (
-                (
-                    w - ix - 1,
-                    -iy - 1,
-                ),
-                Side::F,
-            ),
-            Side::D => (
-                (
-                    ix,
-                    w + iy,
-                ),
-                Side::B,
-            ),
+            Side::L => ((-iy - 1, ix), Side::U),
+            Side::B => ((ix, w + iy), Side::U),
+            Side::R => ((w + iy, w - ix - 1), Side::U),
+            Side::F => ((w - ix - 1, -iy - 1), Side::U),
+            Side::U => ((w - ix - 1, -iy - 1), Side::F),
+            Side::D => ((ix, w + iy), Side::B),
         }
     } else if ix >= 0 && ix < w && iy >= w {
         // x is in range, y is too large
         // move down
         match side {
-            Side::L => (
-                (
-                    iy - w,
-                    w - ix - 1,
-                ),
-                Side::D,
-            ),
-            Side::B => (
-                (
-                    ix,
-                    iy - w,
-                ),
-                Side::D,
-            ),
-            Side::R => (
-                (
-                    2 * w - iy - 1,
-                    ix,
-                ),
-                Side::D,
-            ),
-            Side::F => (
-                (
-                    w - ix - 1,
-                    2 * w - iy - 1,
-                ),
-                Side::D,
-            ),
-            Side::U => (
-                (
-                    ix,
-                    iy - w,
-                ),
-                Side::B,
-            ),
-            Side::D => (
-                (
-                    w - ix - 1,
-                    2 * w - iy - 1,
-                ),
-                Side::F,
-            ),
+            Side::L => ((iy - w, w - ix - 1), Side::D),
+            Side::B => ((ix, iy - w), Side::D),
+            Side::R => ((2 * w - iy - 1, ix), Side::D),
+            Side::F => ((w - ix - 1, 2 * w - iy - 1), Side::D),
+            Side::U => ((ix, iy - w), Side::B),
+            Side::D => ((w - ix - 1, 2 * w - iy - 1), Side::F),
         }
     } else {
         // neither is in range. client must wrap x and y themself
         let clamped_ix = isize::clamp(ix, 0, w - 1);
         let clamped_iy = isize::clamp(iy, 0, w - 1);
 
-        let val1 = remap_erosion_index(
-            (clamped_ix, iy),
-            width,
-            side,
-        ).unwrap();
-        let val2 = remap_erosion_index(
-            (ix, clamped_iy),
-            width,
-            side,
-        ).unwrap();
+        let val1 = remap_erosion_index((clamped_ix, iy), width, side).unwrap();
+        let val2 = remap_erosion_index((ix, clamped_iy), width, side).unwrap();
 
         return Err((val1, val2));
     };
@@ -1796,18 +1493,13 @@ fn remap_erosion_index(
     Ok(((new_ix as usize, new_iy as usize), new_side))
 }
 
-fn sample_height(
-    i: (isize, isize),
-    width: usize,
-    side: Side,
-    sides: &[ProtoSide],
-) -> f32 {
+fn sample_height(i: (isize, isize), width: usize, side: Side, sides: &[ProtoSide]) -> f32 {
     match remap_erosion_index(i, width, side) {
         Ok(((ix, iy), side)) => {
             let side_index = side.to_index();
             let h = sides[side_index].height_map.borrow().get(ix, iy);
             h.height
-        },
+        }
         Err((((lix, liy), lside), ((rix, riy), rside))) => {
             let lside_index = lside.to_index();
             let lh = sides[lside_index].height_map.borrow().get(lix, liy);
@@ -1818,9 +1510,8 @@ fn sample_height(
             let rval = rh.height;
 
             (lval + rval) / 2.0
-        },
+        }
     }
-
 }
 
 fn calculate_gradient_and_height(
@@ -1852,11 +1543,7 @@ fn calculate_gradient_and_height(
     let gradient_y = (sw - nw) * (1.0 - x) + (se - ne) * x;
     let gradient = Vec2(gradient_x, gradient_y);
 
-    let height = 
-        nw * (1.0 - x) * (1.0 - y) +
-        ne * x * (1.0 - y) +
-        sw * (1.0 - x) * y +
-        se * x * y;
+    let height = nw * (1.0 - x) * (1.0 - y) + ne * x * (1.0 - y) + sw * (1.0 - x) * y + se * x * y;
 
     (gradient, height)
 }
@@ -1877,13 +1564,13 @@ fn deposit_sediment(
             let height_map = &side.height_map;
             let mut height_map = height_map.borrow_mut();
             height_map.set(ix, iy, h);
-        },
+        }
         Err((((lix, liy), lside), ((rix, riy), rside))) => {
             let li = (lix as isize, liy as isize);
             let ri = (rix as isize, riy as isize);
 
             deposit_sediment(li, width, lside, sides, sediment / 2.0);
             deposit_sediment(ri, width, rside, sides, sediment / 2.0);
-        },
+        }
     }
 }

@@ -10,19 +10,19 @@ mod terrain_generator;
 mod util;
 mod vector;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     // settings
-    let width = (1 << 6) + 1;
+    let seed = rng::Seed::default();
+    let width = (1 << 7) + 1;
     let args = terrain_generator::Args {
-        only_generate_first_face: false,
-        seed: rng::Seed::default(),
+        seed,
         width,
         continent_count: 6,
         kernel_radius: width as f32 * 0.75,
         fractal_main_layer: 1,
         fractal_weight: 0.25,
-        erosion_iterations: 10,
-        erosion_max_lifetime: 30,
+        erosion_iterations: 13,
+        erosion_max_lifetime: 10,
         erosion_start_speed: 1.0,
         erosion_start_water: 1.0,
         erosion_inertia: 0.3,
@@ -33,17 +33,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         erosion_gravity: 4.0,
         erosion_evaporate_speed: 0.01,
     };
-    
+
     // run terrain generator
     let result = terrain_generator::run(args);
 
     // use heightmap as desired
-    save_as_qoi(width, result)
+    if let Err(e) = save_as_bin(width, &result) {
+        eprintln!("failed to safe bin: {}", e);
+    }
+
+    if let Err(e) = save_as_qoi(width, &result) {
+        eprintln!("failed to safe qoi: {}", e);
+    }
+
+    eprintln!("done! seed: {:?}", seed);
 }
 
-fn save_as_qoi(
+fn save_as_bin<'a>(
     width: usize,
-    height_maps: impl IntoIterator<Item = crate::terrain_generator::HeightMap>,
+    height_maps: impl IntoIterator<Item = &'a crate::terrain_generator::HeightMap>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::path::PathBuf;
+
+    use crate::terrain_generator::HeightMap;
+
+    for height_map in height_maps.into_iter() {
+        let HeightMap { values, side } = height_map;
+
+        let path_string = format!("{}x{}_f32_{}.bin", width, width, side);
+        let filepath = PathBuf::from(path_string);
+
+        if filepath.exists() {
+            std::fs::remove_file(&filepath)?;
+        }
+
+        let mut file = std::fs::File::create_new(filepath)?;
+        let f = &mut file;
+        for v in values {
+            crate::io::write_f32(f, *v)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn save_as_qoi<'a>(
+    width: usize,
+    height_maps: impl IntoIterator<Item = &'a crate::terrain_generator::HeightMap>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::path::PathBuf;
 
@@ -65,10 +101,6 @@ fn save_as_qoi(
         OkLab::from(Rgb::from_hex("#ff0300")?),
         OkLab::from(Rgb::from_hex("#a64020")?),
     ])?;
-    //let gradient = Gradient::try_from([
-    //    Rgb::from_hex("#000000")?,
-    //    Rgb::from_hex("#ffffff")?,
-    //])?;
 
     for height_map in height_maps.into_iter() {
         let HeightMap { values, side } = height_map;
@@ -79,7 +111,6 @@ fn save_as_qoi(
         for &h in values.iter() {
             let lab = gradient.sample(h);
             let rgb = Rgb::from(lab);
-            //let rgb = gradient.sample(h);
             let [r, g, b] = rgb.to_u8();
             bytes.push(r);
             bytes.push(g);
@@ -111,6 +142,5 @@ fn save_as_qoi(
         crate::io::write(f, &qoi_bytes)?;
     }
 
-    eprintln!("done!");
     Ok(())
 }
