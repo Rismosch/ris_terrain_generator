@@ -12,8 +12,8 @@ mod vector;
 
 fn main() {
     // settings
-    let seed = rng::Seed::default();
-    let width = (1 << 7) + 1;
+    let seed = rng::Seed::new();
+    let width = (1 << 6) + 1;
     let args = terrain_generator::Args {
         seed,
         width,
@@ -21,7 +21,7 @@ fn main() {
         kernel_radius: width as f32 * 0.75,
         fractal_main_layer: 1,
         fractal_weight: 0.25,
-        erosion_iterations: 13,
+        erosion_iterations: 20,
         erosion_max_lifetime: 10,
         erosion_start_speed: 1.0,
         erosion_start_water: 1.0,
