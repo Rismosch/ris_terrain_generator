@@ -57,8 +57,10 @@ fn save_as_bin<'a>(
 
     use crate::terrain_generator::HeightMap;
 
-    for height_map in height_maps.into_iter() {
+    for (i, height_map) in height_maps.into_iter().enumerate() {
         let HeightMap { values, side } = height_map;
+        
+        eprintln!("serializing bin... {}/6", i + 1);
 
         let path_string = format!("{}x{}_f32_{}.bin", width, width, side);
         let filepath = PathBuf::from(path_string);
@@ -102,10 +104,10 @@ fn save_as_qoi<'a>(
         OkLab::from(Rgb::from_hex("#a64020")?),
     ])?;
 
-    for height_map in height_maps.into_iter() {
+    for (i, height_map) in height_maps.into_iter().enumerate() {
         let HeightMap { values, side } = height_map;
 
-        eprintln!("convert height map to bytes...");
+        eprintln!("serializing qoi... {}/6", i + 1);
         let mut bytes = Vec::with_capacity(values.len() * 3);
 
         for &h in values.iter() {
@@ -117,7 +119,6 @@ fn save_as_qoi<'a>(
             bytes.push(b);
         }
 
-        eprintln!("encoding to qoi...");
         let desc = QoiDesc {
             width: width as u32,
             height: width as u32,
@@ -125,10 +126,6 @@ fn save_as_qoi<'a>(
             color_space: ColorSpace::SRGB,
         };
         let qoi_bytes = qoi::encode(&bytes, desc)?;
-
-        eprintln!("bytes len: {} qoi len: {}", bytes.len(), qoi_bytes.len(),);
-
-        eprintln!("serializing...");
 
         let path_string = format!("height_map_{}.qoi", side);
         let filepath = PathBuf::from(path_string);
