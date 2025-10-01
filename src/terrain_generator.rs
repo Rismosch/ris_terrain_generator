@@ -913,28 +913,26 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     //}
     //eprintln!();
     
-    eprintln!("produce debug heightmap...");
-    for side in sides.iter() {
-        let mut heightmap = side.height_map.borrow_mut();
-        let side = heightmap.side;
-        for (i, v) in heightmap.values.iter_mut().enumerate() {
-            let ix = i % width;
-            let iy = i / width;
-            let w = width as f32;
-            let x = ix as f32 / w;
-            let y = iy as f32 / w;
+    //eprintln!("produce debug heightmap...");
+    //for side in sides.iter() {
+    //    let mut heightmap = side.height_map.borrow_mut();
+    //    let side = heightmap.side;
+    //    for (i, v) in heightmap.values.iter_mut().enumerate() {
+    //        let ix = i % width;
+    //        let iy = i / width;
+    //        let w = width as f32;
+    //        let x = ix as f32 / w;
+    //        let y = iy as f32 / w;
 
-            match side {
-                Side::L => v.height = -0.5 * x + 1.0,
-                Side::B => v.height = -0.5 * x + 0.5,
-                //Side::L => v.height = 0.5 * x,
-                //Side::B => v.height = 0.5 * x + 0.5,
-                _ => v.height = 0.0,
-            }
-        }
+    //        match side {
+    //            Side::L => v.height = 0.5 * x,
+    //            Side::B => v.height = 0.5 * x + 0.5,
+    //            _ => v.height = 0.0,
+    //        }
+    //    }
 
-    }
-
+    //}
+    
     eprintln!("find erosion stride...");
 
     let phi = (1.0 + f32::sqrt(5.0)) / 2.0; // golden ratio
@@ -978,11 +976,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
         idrop = (idrop + stride) % modulo;
 
-        //let side = idrop / resolution;
-        //let mut side = sides[side].height_map.borrow().side;
-        //let index = idrop % resolution;
-        let mut side = Side::L;
-        let index = width * width / 2 - width / 4;
+        let side = idrop / resolution;
+        let mut side = sides[side].height_map.borrow().side;
+        let index = idrop % resolution;
+        //let mut side = Side::L;
+        //let index = width * width / 2 - width / 4;
 
         let mut pos = Vec2(
             (index % width) as f32,
@@ -996,7 +994,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
         let mut path = Vec::new();
 
-        let debug_erosion = true;
+        let debug_erosion = false;
         let debug_break_at = 2;
         let debug_log = |s: String| {
             if !debug_erosion {
@@ -1018,13 +1016,14 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             //} else {
             //    y
             //} as usize;
-            let node_x = x as usize;
-            let node_y = y as usize;
 
-            let cell_offset = Vec2(
-                pos.x() - node_x as f32,
-                pos.y() - node_y as f32,
-            );
+            //let node_x = x as usize;
+            //let node_y = y as usize;
+
+            //let cell_offset = Vec2(
+            //    pos.x() - node_x as f32,
+            //    pos.y() - node_y as f32,
+            //);
 
             let (gradient, height) = calculate_gradient_and_height(
                 pos,
@@ -1043,7 +1042,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 break;
             }
             let pos_ = pos + dir;
-            eprintln!("{} {} dir {:?}\tdir' {:?}\tpos {:?}\tpos' {:?}\tgrad {:?}", i, side, dir, dir_, pos, pos_, gradient);
+            //eprintln!("{} {} dir {:?}\tdir' {:?}\tpos {:?}\tpos' {:?}\tgrad {:?}", i, side, dir, dir_, pos, pos_, gradient);
             pos = pos_;
             dir = dir_;
 
@@ -1341,10 +1340,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
             path.push((pos, dir, side, eko));
 
-            //if dir.x() == 0.0 && dir.y() == 0.0 {
-            //    break;
-            //}
-
             let (_, new_height) = calculate_gradient_and_height(
                 pos,
                 width,
@@ -1407,6 +1402,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     (sediment_capacity - sediment) * erosion_erode_speed,
                     -delta_height,
                 );
+
+                let node_x = pos.x() as usize;
+                let node_y = pos.y() as usize;
+                let node_x = usize::min(node_x, width - 1);
+                let node_y = usize::min(node_y, width - 1);
 
                 let mut h = sides[side.to_index()].height_map.borrow().get(node_x, node_y);
                 let delta_sediment = if h.height < amount_to_erode {

@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         kernel_radius: width as f32 * 0.75,
         fractal_main_layer: 1,
         fractal_weight: 0.25,
-        erosion_iterations: 10,
+        erosion_iterations: 30,
         erosion_max_lifetime: 30,
         erosion_start_speed: 1.0,
         erosion_start_water: 1.0,
@@ -56,19 +56,19 @@ fn save_as_qoi(
     use crate::qoi::QoiDesc;
     use crate::terrain_generator::HeightMap;
 
-    //let gradient = Gradient::try_from([
-    //    OkLab::from(Rgb::from_hex("#00008a")?),
-    //    OkLab::from(Rgb::from_hex("#1d90ff")?),
-    //    OkLab::from(Rgb::from_hex("#04e100")?),
-    //    OkLab::from(Rgb::from_hex("#ffff00")?),
-    //    OkLab::from(Rgb::from_hex("#ff8b00")?),
-    //    OkLab::from(Rgb::from_hex("#ff0300")?),
-    //    OkLab::from(Rgb::from_hex("#a64020")?),
-    //])?;
     let gradient = Gradient::try_from([
-        Rgb::from_hex("#000000")?,
-        Rgb::from_hex("#ffffff")?,
+        OkLab::from(Rgb::from_hex("#00008a")?),
+        OkLab::from(Rgb::from_hex("#1d90ff")?),
+        OkLab::from(Rgb::from_hex("#04e100")?),
+        OkLab::from(Rgb::from_hex("#ffff00")?),
+        OkLab::from(Rgb::from_hex("#ff8b00")?),
+        OkLab::from(Rgb::from_hex("#ff0300")?),
+        OkLab::from(Rgb::from_hex("#a64020")?),
     ])?;
+    //let gradient = Gradient::try_from([
+    //    Rgb::from_hex("#000000")?,
+    //    Rgb::from_hex("#ffffff")?,
+    //])?;
 
     for height_map in height_maps.into_iter() {
         let HeightMap { values, side } = height_map;
@@ -77,9 +77,9 @@ fn save_as_qoi(
         let mut bytes = Vec::with_capacity(values.len() * 3);
 
         for &h in values.iter() {
-            //let lab = gradient.sample(h);
-            //let rgb = Rgb::from(lab);
-            let rgb = gradient.sample(h);
+            let lab = gradient.sample(h);
+            let rgb = Rgb::from(lab);
+            //let rgb = gradient.sample(h);
             let [r, g, b] = rgb.to_u8();
             bytes.push(r);
             bytes.push(g);
