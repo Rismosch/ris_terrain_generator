@@ -860,26 +860,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     normalize(&mut sides, None);
 
     // erosion
-    //eprintln!("produce debug heightmap...");
-    //for side in sides.iter() {
-    //    let mut heightmap = side.height_map.borrow_mut();
-    //    let side = heightmap.side;
-    //    for (i, v) in heightmap.values.iter_mut().enumerate() {
-    //        let ix = i % width;
-    //        let iy = i / width;
-    //        let w = width as f32;
-    //        let x = ix as f32 / w;
-    //        let y = iy as f32 / w;
-
-    //        match side {
-    //            Side::L => v.height = 0.5 * x,
-    //            Side::B => v.height = 0.5 * x + 0.5,
-    //            _ => v.height = 0.0,
-    //        }
-    //    }
-
-    //}
-
     eprintln!("find erosion stride...");
 
     let phi = (1.0 + f32::sqrt(5.0)) / 2.0; // golden ratio

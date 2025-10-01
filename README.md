@@ -83,7 +83,7 @@ The terrain is generated in 3 distinct steps:
 
 Continent generation produces continents. It picks random points on the surface of the cube. One point for each continent. Then it grows these continents using a randomized breadth-first search until the whole cube is covered.
 
-After the continents have been generated, a convolution with a kernel over the entire cube is performed. This is to find the continental boundaries, the nearest touching continent of each pixel. Each continent is assigned a random rotation axis. To simulate continental drift, the rotation axis is used to find the firection, in which each pixel is moving in. Then, depending whether neighboring continents collide or diverge, the pixel is raised or lowered.
+After the continents have been generated, a convolution with a kernel over the entire cube is performed. This is to find the continental boundaries, the nearest touching continent of each pixel. Each continent is assigned a random rotation axis. To simulate continental drift, the rotation axis is used to find the direction, in which each pixel is moving in. Then, depending whether neighboring continents collide or diverge, the pixel is raised or lowered.
 
 Continent generation generates highly coarse terrain, but doesn't create fine details, especially at continent centers. So in the next step [fractal perlin noise](https://en.wikipedia.org/wiki/Perlin_noise) is used to generate noise over the entire cube surface.
 
@@ -93,7 +93,7 @@ First, between generation steps, the heightmaps are normalized between 0 and 1. 
 
 Rain is simulated, by placing waterdroplets randomly on the surface of the terrain. The water then flows downhill, carrying sediment with it and depositing it somewhere else. This cuts grooves and rivers into the terrain, making mountain peaks sharper and valleys flatter.
 
-The erosion simulator logic was directly taken from [Sepastian Lague](https://youtu.be/eaXk97ujbPQ) (precicely [this](https://github.com/SebLague/Hydraulic-Erosion/blob/f245576d204978e3186f41c8abbd75c326c6857e/Assets/Scripts/TerrainGenerator.cs) and [this](https://github.com/SebLague/Hydraulic-Erosion/blob/f245576d204978e3186f41c8abbd75c326c6857e/Assets/Scripts/ComputeShaders/Erosion.compute)  code), rewritten in Rust and heavily modified to work on a cube.
+The erosion simulator logic was directly taken from [Sebastian Lague](https://youtu.be/eaXk97ujbPQ) (precicely [this](https://github.com/SebLague/Hydraulic-Erosion/blob/f245576d204978e3186f41c8abbd75c326c6857e/Assets/Scripts/TerrainGenerator.cs) and [this](https://github.com/SebLague/Hydraulic-Erosion/blob/f245576d204978e3186f41c8abbd75c326c6857e/Assets/Scripts/ComputeShaders/Erosion.compute)  code), rewritten in Rust and heavily modified to work on a cube.
 
 Since the 6 faces tile the cube, great care must be taken at the edges of each face. The randomized breadth-first search, convolution and erosion take this into account, as they walk over the cube surface. The perlin noise in particular had to be modified to generate continuous values over edges. Perlin noise uses directions on lattice points, but due to the [Hairy ball theorem](https://en.wikipedia.org/wiki/Hairy_ball_theorem), the 8 corners produce no directions, or in other words, directions with 0 length.
 
@@ -107,8 +107,8 @@ _todo!()_
 
 ## Notes
 
-The code started out as a script in [ris_engine](https://github.com/Rismosch/ris_engine). Most code in this repo was copied from my engine and modified, such that it compiles as a standalone project. Due to that copying, and the many prototype iterations this code went through, the code is in comparably poorer quality.
+The code started out as a script in [ris_engine](https://github.com/Rismosch/ris_engine). Most code in this repo was copied from my engine and modified, such that it compiles as a standalone project. Due to that, and the fact that `terrain_generator.rs` went through many prototypes very very quickly, the code is in comparably poorer quality.
 
 However, the idea is to run this generator once, and then use the result as a static asset. Thus, the comparably poorer code quality and performance isn't of great significance, because it will never be run again.
 
-Have fun!
+Anyway, have fun!
