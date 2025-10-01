@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         kernel_radius: width as f32 * 0.75,
         fractal_main_layer: 1,
         fractal_weight: 0.25,
-        erosion_iterations: 30,
+        erosion_iterations: 10,
         erosion_max_lifetime: 30,
         erosion_start_speed: 1.0,
         erosion_start_water: 1.0,

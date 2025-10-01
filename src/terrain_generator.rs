@@ -90,7 +90,6 @@ pub struct Args {
     pub fractal_main_layer: usize,
     pub fractal_weight: f32,
     pub erosion_iterations: usize,
-    //pub erosion_brush_radius: usize,
     pub erosion_max_lifetime: usize,
     pub erosion_start_speed: f32,
     pub erosion_start_water: f32,
@@ -118,7 +117,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         fractal_main_layer,
         fractal_weight,
         erosion_iterations,
-        //erosion_brush_radius,
         erosion_max_lifetime,
         erosion_start_speed,
         erosion_start_water,
@@ -870,49 +868,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     normalize(&mut sides, None);
 
     // erosion
-    //eprintln!("build erosion brush...");
-    //let mut brush = ErosionBrush::default();
-    //let mut sum = 0.0;
-    //let r = erosion_brush_radius as isize;
-    //for iy in -r..=r {
-    //    for ix in -r..=r {
-    //        let sqr_dst = ix * ix + iy * iy;
-    //        let weight = if sqr_dst < r * r {
-    //            let weight = 1.0 - f32::sqrt(sqr_dst as f32) / r as f32;
-    //            sum += weight;
-    //            weight
-    //        } else {
-    //            0.0
-    //        };
-
-    //        let value = ErosionBrushValue {
-    //            offset: (ix, iy),
-    //            weight,
-    //        };
-    //        brush.values.push(value);
-    //    }
-    //}
-
-    //for value in brush.values.iter_mut() {
-    //    value.weight /= sum;
-    //}
-
-    //eprint!("brush:");
-    //let brush_width = erosion_brush_radius * 2 + 1;
-    //for (i, value) in brush.values.iter().enumerate() {
-    //    if i % brush_width == 0 {
-    //        eprintln!()
-    //    }
-
-    //    if value.weight == 0.0 {
-    //        eprint!("      ");
-    //    }
-    //    else {
-    //        eprint!(" {:.3}", value.weight);
-    //    }
-    //}
-    //eprintln!();
-    
     //eprintln!("produce debug heightmap...");
     //for side in sides.iter() {
     //    let mut heightmap = side.height_map.borrow_mut();
@@ -979,8 +934,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         let side = idrop / resolution;
         let mut side = sides[side].height_map.borrow().side;
         let index = idrop % resolution;
-        //let mut side = Side::L;
-        //let index = width * width / 2 - width / 4;
 
         let mut pos = Vec2(
             (index % width) as f32,
@@ -992,39 +945,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         let mut water = erosion_start_water;
         let mut sediment = 0.0;
 
-        let mut path = Vec::new();
-
-        let debug_erosion = false;
-        let debug_break_at = 2;
-        let debug_log = |s: String| {
-            if !debug_erosion {
-                return;
-            }
-
-            eprintln!("{}", s);
-        };
-
-        for lifetime in 0..erosion_max_lifetime {
-            let Vec2(x, y) = pos;
-            //let node_x = if x == width as f32 {
-            //    x - 0.001
-            //} else {
-            //    x
-            //} as usize;
-            //let node_y = if y == width as f32 {
-            //    y - 0.001
-            //} else {
-            //    y
-            //} as usize;
-
-            //let node_x = x as usize;
-            //let node_y = y as usize;
-
-            //let cell_offset = Vec2(
-            //    pos.x() - node_x as f32,
-            //    pos.y() - node_y as f32,
-            //);
-
+        for _lifetime in 0..erosion_max_lifetime {
             let (gradient, height) = calculate_gradient_and_height(
                 pos,
                 width,
@@ -1035,14 +956,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
             dir.set_x(dir.x() * erosion_inertia - gradient.x() * (1.0 - erosion_inertia));
             dir.set_y(dir.y() * erosion_inertia - gradient.y() * (1.0 - erosion_inertia));
-            //let len = f32::max(0.01, dir.length());
-            //dir /= len;
             let dir_ = dir.normalize();
             if dir.is_nan().any() {
                 break;
             }
             let pos_ = pos + dir;
-            //eprintln!("{} {} dir {:?}\tdir' {:?}\tpos {:?}\tpos' {:?}\tgrad {:?}", i, side, dir, dir_, pos, pos_, gradient);
             pos = pos_;
             dir = dir_;
 
@@ -1061,7 +979,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 w + x,
                                 y,
                             );
-                            debug_log(format!("debug this {}", i));
                         },
                         Side::B => {
                             side = Side::L;
@@ -1069,7 +986,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 w + x,
                                 y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::R => {
                             side = Side::B;
@@ -1077,7 +993,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 w + x,
                                 y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::F => {
                             side = Side::R;
@@ -1085,7 +1000,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 w + x,
                                 y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::U => {
                             side = Side::L;
@@ -1099,7 +1013,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_ccw();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::D => {
                             side = Side::L;
@@ -1113,7 +1026,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 -dir.x(),
                             );
                             eko.rotate_cw();
-                            debug_log(format!("debug_this {}", i));
                         },
                     }
                 } else if x > w {
@@ -1125,7 +1037,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 x - w,
                                 y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::B => {
                             side = Side::R;
@@ -1133,7 +1044,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 x - w,
                                 y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::R => {
                             side = Side::F;
@@ -1141,7 +1051,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 x - w,
                                 y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::F => {
                             side = Side::L;
@@ -1149,7 +1058,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 x - w,
                                 y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::U => {
                             side = Side::R;
@@ -1163,7 +1071,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 -dir.x(),
                             );
                             eko.rotate_cw();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::D => {
                             side = Side::R;
@@ -1177,7 +1084,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_ccw();
-                            debug_log(format!("debug_this {}", i));
                         },
                     }
                 } else if y < 0.0 {
@@ -1195,7 +1101,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 -dir.x(),
                             );
                             eko.rotate_cw();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::B => {
                             side = Side::U;
@@ -1203,7 +1108,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 x,
                                 w + y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::R => {
                             side = Side::U;
@@ -1217,7 +1121,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_ccw();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::F => {
                             side = Side::U;
@@ -1231,7 +1134,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_180();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::U => {
                             side = Side::F;
@@ -1245,7 +1147,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_180();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::D => {
                             side = Side::B;
@@ -1253,7 +1154,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 x,
                                 w + y,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                     }
                 } else if y > w {
@@ -1272,7 +1172,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_ccw();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::B => {
                             side = Side::D;
@@ -1280,7 +1179,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 x,
                                 y - w,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::R => {
                             side = Side::D;
@@ -1294,7 +1192,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 -dir.x(),
                             );
                             eko.rotate_cw();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::F => {
                             side = Side::D;
@@ -1308,7 +1205,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_180();
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::U => {
                             side = Side::B;
@@ -1316,7 +1212,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 x,
                                 y - w,
                             );
-                            debug_log(format!("debug_this {}", i));
                         },
                         Side::D => {
                             side = Side::F;
@@ -1330,15 +1225,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                                 dir.x(),
                             );
                             eko.rotate_180();
-                            debug_log(format!("debug_this {}", i));
                         },
                     }
                 } else {
                     break;
                 }
             }
-
-            path.push((pos, dir, side, eko));
 
             let (_, new_height) = calculate_gradient_and_height(
                 pos,
@@ -1363,40 +1255,64 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
                 sediment -= amount_to_deposit;
 
-                //todo!("use eko here to find the correct nw, ne, sw, and se indices");
-                //let deposit_nw = amount_to_deposit * (1.0 - cell_offset.x()) * (1.0 - cell_offset.y());
-                //let deposit_ne = amount_to_deposit * cell_offset.x() * (1.0 - cell_offset.y());
-                //let deposit_sw = amount_to_deposit * (1.0 - cell_offset.x()) * cell_offset.y();
-                //let deposit_se = amount_to_deposit * cell_offset.x() * cell_offset.y();
+                let c = pos.fract();
+                let weight0 = 1.0 - c.x() * 1.0 - c.y();
+                let weight1 = c.x() * 1.0 - c.y();
+                let weight2 = 1.0 - c.x() * c.y();
+                let weight3 = c.x() * c.y();
 
-                //deposit_sediment(
-                //    (node_x, node_y),
-                //    width,
-                //    side,
-                //    &sides,
-                //    deposit_nw,
-                //);
-                //deposit_sediment(
-                //    (node_x + 1, node_y),
-                //    width,
-                //    side,
-                //    &sides,
-                //    deposit_ne,
-                //);
-                //deposit_sediment(
-                //    (node_x, node_y + 1),
-                //    width,
-                //    side,
-                //    &sides,
-                //    deposit_sw,
-                //);
-                //deposit_sediment(
-                //    (node_x + 1, node_y + 1),
-                //    width,
-                //    side,
-                //    &sides,
-                //    deposit_se,
-                //);
+                let (
+                    weight_nw,
+                    weight_ne,
+                    weight_sw,
+                    weight_se,
+                ) = match eko {
+                    ErosionKernelOrigin::NW => (weight0, weight1, weight2, weight3),
+                    ErosionKernelOrigin::NE => (weight1, weight0, weight3, weight2),
+                    ErosionKernelOrigin::SW => (weight2, weight3, weight0, weight1),
+                    ErosionKernelOrigin::SE => (weight3, weight2, weight1, weight0),
+                };
+
+                let deposit_nw = amount_to_deposit * weight_nw;
+                let deposit_ne = amount_to_deposit * weight_ne;
+                let deposit_sw = amount_to_deposit * weight_sw;
+                let deposit_se = amount_to_deposit * weight_se;
+
+                let i = (pos.0 as isize, pos.1 as isize);
+                let (onw, one, osw, ose) = eko.get_offsets();
+                let inw = (i.0 + onw.0, i.1 + onw.1);
+                let ine = (i.0 + one.0, i.1 + one.1);
+                let isw = (i.0 + osw.0, i.1 + osw.1);
+                let ise = (i.0 + ose.0, i.1 + ose.1);
+
+                deposit_sediment(
+                    inw,
+                    width,
+                    side,
+                    &sides,
+                    deposit_nw,
+                );
+                deposit_sediment(
+                    ine,
+                    width,
+                    side,
+                    &sides,
+                    deposit_ne,
+                );
+                deposit_sediment(
+                    isw,
+                    width,
+                    side,
+                    &sides,
+                    deposit_sw,
+                );
+                deposit_sediment(
+                    ise,
+                    width,
+                    side,
+                    &sides,
+                    deposit_se,
+                );
             } else {
                 let amount_to_erode = f32::min(
                     (sediment_capacity - sediment) * erosion_erode_speed,
@@ -1424,33 +1340,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 speed * speed + delta_height * erosion_gravity,
             ));
             water *= 1.0 - erosion_evaporate_speed;
-        }
-
-        if i == debug_break_at && debug_erosion {
-            let mut csv = format!("n;lx;ly;bx;by;rx;ry;fx;fy;ux;uy;dx;dy;dirx;diry;eko;\n");
-
-            for (i, (Vec2(x, y), Vec2(dir_x, dir_y), side, eko)) in path.iter().enumerate() {
-                let to_append = match side {
-                    Side::L => format!("{};{};{};;;;;;;;;;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
-                    Side::B => format!("{};;;{};{};;;;;;;;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
-                    Side::R => format!("{};;;;;{};{};;;;;;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
-                    Side::F => format!("{};;;;;;;{};{};;;;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
-                    Side::U => format!("{};;;;;;;;;{};{};;;{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
-                    Side::D => format!("{};;;;;;;;;;;{};{};{};{};{:?}\n", i, x, -y, dir_x, dir_y, eko),
-                };
-
-                csv.push_str(&to_append);
-            }
-
-            let file_path = std::path::PathBuf::from(format!("C:/Users/Rismosch/source/repos/terrain_generator/debug_{}.csv", i));
-            if file_path.exists() {
-                std::fs::remove_file(&file_path).unwrap();
-            }
-
-            let mut file = std::fs::File::create_new(&file_path).unwrap();
-            file.write_all(csv.as_bytes()).unwrap();
-
-            break;
         }
     }
 
@@ -1551,17 +1440,6 @@ struct Continent {
     rotation_axis: Vec3,
 }
 
-//#[derive(Default, Debug, Clone)]
-//struct ErosionBrush {
-//    values: Vec<ErosionBrushValue>,
-//}
-//
-//#[derive(Debug, Clone)]
-//struct ErosionBrushValue {
-//    offset: (isize, isize),
-//    weight: f32,
-//}
-
 // erosion samples 4 cells at different steps. when the droplet goes over a cube edge, the kernel
 // may be rotated, and thus changing the "origin cell" that the droplet may find itself in.
 #[derive(Debug, Clone, Copy)]
@@ -1600,6 +1478,16 @@ impl ErosionKernelOrigin {
     fn rotate_180(&mut self) {
         self.rotate_cw();
         self.rotate_cw();
+    }
+
+    // returns offsets for (nw, ne, sw, se)
+    fn get_offsets(self) -> ((isize, isize), (isize, isize), (isize, isize), (isize, isize)) {
+        match self {
+            ErosionKernelOrigin::NW => ((0,0),(1,0),(0,1),(1,1)),
+            ErosionKernelOrigin::NE => ((-1,0),(0,0),(-1,1),(0,1)),
+            ErosionKernelOrigin::SW => ((0,-1),(1,-1),(0,0),(1,0)),
+            ErosionKernelOrigin::SE => ((-1,-1),(0,-1),(-1,0),(0,0)),
+        }
     }
 }
 
@@ -1948,12 +1836,7 @@ fn calculate_gradient_and_height(
     let x = pos.x() - coord_x as f32;
     let y = pos.y() - coord_y as f32;
 
-    let (onw, one, osw, ose) = match eko {
-        ErosionKernelOrigin::NW => ((0,0),(1,0),(0,1),(1,1)),
-        ErosionKernelOrigin::NE => ((-1,0),(0,0),(-1,1),(0,1)),
-        ErosionKernelOrigin::SW => ((0,-1),(1,-1),(0,0),(1,0)),
-        ErosionKernelOrigin::SE => ((-1,-1),(0,-1),(-1,0),(0,0)),
-    };
+    let (onw, one, osw, ose) = eko.get_offsets();
 
     let inw = (coord_x + onw.0, coord_y + onw.1);
     let ine = (coord_x + one.0, coord_y + one.1);
@@ -1985,22 +1868,22 @@ fn deposit_sediment(
     sides: &[ProtoSide],
     sediment: f32,
 ) {
-    todo!("deposit sediment");
-    //match remap_erosion_index(ipos, width, side) {
-    //    Some(((ix, iy), side)) => {
-    //        let side_index = side.to_index();
-    //        let mut h = sides[side_index].height_map.borrow().get(ix, iy);
-    //        h.height += sediment;
-    //        let side = &sides[side_index];
-    //        let height_map = &side.height_map;
-    //        let mut height_map = height_map.borrow_mut();
-    //        height_map.set(ix, iy, h);
-    //    },
-    //    None => {
-    //        let (ix, iy) = ipos;
+    match remap_erosion_index(ipos, width, side) {
+        Ok(((ix, iy), side)) => {
+            let side_index = side.to_index();
+            let mut h = sides[side_index].height_map.borrow().get(ix, iy);
+            h.height += sediment;
+            let side = &sides[side_index];
+            let height_map = &side.height_map;
+            let mut height_map = height_map.borrow_mut();
+            height_map.set(ix, iy, h);
+        },
+        Err((((lix, liy), lside), ((rix, riy), rside))) => {
+            let li = (lix as isize, liy as isize);
+            let ri = (rix as isize, riy as isize);
 
-    //        deposit_sediment((ix - 1, iy), width, side, sides, sediment * 0.5);
-    //        deposit_sediment((ix, iy - 1), width, side, sides, sediment * 0.5);
-    //    }
-    //}
+            deposit_sediment(li, width, lside, sides, sediment / 2.0);
+            deposit_sediment(ri, width, rside, sides, sediment / 2.0);
+        },
+    }
 }
