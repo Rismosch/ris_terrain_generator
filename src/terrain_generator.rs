@@ -898,7 +898,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             eprintln!("erode... {}%", progress,);
         }
 
-        idrop = (idrop + stride) % modulo;
+        idrop = idrop.wrapping_add(stride) % modulo;
 
         let side = idrop / resolution;
         let mut side = sides[side].height_map.borrow().side;
