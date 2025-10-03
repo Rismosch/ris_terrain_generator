@@ -14,7 +14,7 @@ To compile and run this repo, you require a working Rust compiler: https://www.r
 
 ## How to use
 
-The main and only entry point is `terrain_generator::run`. It produces the 6 square faces of a cube. These can then be mapped to a sphere, thus producing planetary terrain. An example usage can be found in `main.rs`.
+The main and only entry point is `terrain_generator::run`. It produces the 6 square faces of a cube. These can then be mapped to a sphere, thus producing planetary terrain.
 
 `terrain_generator::run` returns a `Vec` of the generated sides. These resulting heightmaps are normalized. This means all values will be between 0 and 1. This makes it easy to transform them into any format you desire. As an example, `save_as_bin` and `save_as_qoi` in `main.rs` demonstrate how one might use the heightmaps. ⚠ **Note that these examples save files at the root of this repo! Existing files will be overwritten! Make sure you create backups of the generated files you want to keep!**
 
