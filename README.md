@@ -14,43 +14,7 @@ To compile and run this repo, you require a working Rust compiler: https://www.r
 
 ## How to use
 
-The main and only entry point is `terrain_generator::run`. It produces the 6 square faces of a cube. These can then be mapped to a sphere, thus producing planetary terrain.
-
-`terrain_generator::Args` exposes a few settings to modify the generators behaviour:
-
-- `seed` is a wrapper around a `u128`, which controls the RNG of the generator. The same seed will produce the same terrain. `Seed::new()` generates a completely new and unique seed, which in turn generates completely new terrain. `Seed::default()` on the other hand returns a hard coded, unchanging seed. Use `Seed::default()` or `Seed(<your_number>)` to generate the same terrain again and again.
-
-- `width` is the width of a single cube face. This has a small effect on the overall structure of the terrain. It affects the continent generation, but aside from that it increases resolution. Note that the bigger the width, the longer the generator takes. At sufficiently large widths, generation can take up to minutes and hours.
-
-- `continent_count` determines how many continents should be generated. These are used to generate very coarse terrain features.
-
-- `kernel_radius` has an effect on the width of coarse continental mountain ranges. A higher radius produces thicker mountains, but massively increases generation time.
-
-- `fractal_main_layer` describes which octave of the fractal perlin noise is the main one. Every other will be weighted less than the main layer.
-
-- `fractal_weight` determines the weight of the total fractal perlin noise. The coarse continent terrain has a weight of 1.
-
-- `erosion_iterations` determines how long the erosion lasts. a single iteration spawns a raindrop for every pixel. thus more iterations drastically increase how many raindrops are simulated.
-
-- `erosion_max_lifetime` determines how many steps a raindrop lives at maximum, before simulating a new and different raindrop.
-
-- `erosion_start_speed` sets the initial speed of the raindrop.
-
-- `erosion_start_water` sets how much water water a raindrop has initially.
-
-- `erosion_inertia` determines how hard it is to change the direction the droplet is moving in. This means a droplet may not always flow down the steepest slope, but may overshoot and land somewhere else.
-
-- `erosion_min_sediment_capacity` determines the minimum amout of material the raindrop can hold.
-
-- `erosion_sediment_capacity_factor` has an affect on how much material a raindrop can hold.
-
-- `erosion_erode_speed` has a direct effect on how much material is removed from the terrain.
-
-- `erosion_deposit_speed` has a direct effect on how much material the raindrop loses when depositing it back to the terrain. (For example when the raindrop evaporates, it leaves the material behind.)
-
-- `erosion_gravity` determines how fast the droplet accelerates downwards.
-
-- `erosion_evaporate_speed` sets how much water the raindrop loses, after each time a single step is evaluated.
+The main and only entry point is `terrain_generator::run`. It produces the 6 square faces of a cube. These can then be mapped to a sphere, thus producing planetary terrain. An example usage can be found in `main.rs`.
 
 `terrain_generator::run` returns a `Vec` of the generated sides. These resulting heightmaps are normalized. This means all values will be between 0 and 1. This makes it easy to transform them into any format you desire. As an example, `save_as_bin` and `save_as_qoi` in `main.rs` demonstrate how one might use the heightmaps. ⚠ **Note that these examples save files at the root of this repo! Existing files will be overwritten! Make sure you create backups of the generated files you want to keep!**
 
@@ -104,6 +68,44 @@ A finished heightmap, with a colored gradient applied, may look like this:
 And rendered applied to a sphere mesh using cube topology, it may look like this:
 
 _todo!()_
+
+## Settings
+
+`terrain_generator::Args` exposes a few settings to modify the generators behaviour:
+
+- `seed` is a wrapper around a `u128`, which controls the RNG of the generator. The same seed will produce the same terrain. `Seed::new()` generates a completely new and unique seed, which in turn generates completely new terrain. `Seed::default()` on the other hand returns a hard coded, unchanging seed. Use `Seed::default()` or `Seed(<your_number>)` to generate the same terrain again and again.
+
+- `width` is the width of a single cube face. This has a small effect on the overall structure of the terrain. It affects the continent generation, but aside from that it increases resolution. Note that the bigger the width, the longer the generator takes. At sufficiently large widths, generation can take up to minutes and hours.
+
+- `continent_count` determines how many continents should be generated. These are used to generate very coarse terrain features.
+
+- `kernel_radius` has an effect on the width of coarse continental mountain ranges. A higher radius produces thicker mountains, but massively increases generation time.
+
+- `fractal_main_layer` describes which octave of the fractal perlin noise is the main one. Every other will be weighted less than the main layer.
+
+- `fractal_weight` determines the weight of the total fractal perlin noise. The coarse continent terrain has a weight of 1.
+
+- `erosion_iterations` determines how long the erosion lasts. a single iteration spawns a raindrop for every pixel. thus more iterations drastically increase how many raindrops are simulated.
+
+- `erosion_max_lifetime` determines how many steps a raindrop lives at maximum, before simulating a new and different raindrop.
+
+- `erosion_start_speed` sets the initial speed of the raindrop.
+
+- `erosion_start_water` sets how much water water a raindrop has initially.
+
+- `erosion_inertia` determines how hard it is to change the direction the droplet is moving in. This means a droplet may not always flow down the steepest slope, but may overshoot and land somewhere else.
+
+- `erosion_min_sediment_capacity` determines the minimum amout of material the raindrop can hold.
+
+- `erosion_sediment_capacity_factor` has an affect on how much material a raindrop can hold.
+
+- `erosion_erode_speed` has a direct effect on how much material is removed from the terrain.
+
+- `erosion_deposit_speed` has a direct effect on how much material the raindrop loses when depositing it back to the terrain. (For example when the raindrop evaporates, it leaves the material behind.)
+
+- `erosion_gravity` determines how fast the droplet accelerates downwards.
+
+- `erosion_evaporate_speed` sets how much water the raindrop loses, after each time a single step is evaluated.
 
 ## Notes
 
