@@ -280,13 +280,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 new_pixel_was_discovered = true;
 
                 h.continent_index = continent_index;
-                discovered_pixel_count += 1;
-
                 if discovered_pixel_count % 1000000 == 0 {
                     let total = width * width * 6;
                     let percentage = discovered_pixel_count as f32 / total as f32;
                     eprintln!("generate continents... {}", percentage);
                 }
+                discovered_pixel_count += 1;
 
                 side.height_map
                     .borrow_mut()
@@ -506,8 +505,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     let continent_start = std::time::Instant::now();
 
     // find edges
-    let mut unchecked_boundaries = Vec::new();
+    eprintln!("find continent edges...");
 
+    let mut unchecked_boundaries = Vec::new();
     for side in sides.iter() {
         let ProtoSide {
             perlin_sampler: _,
@@ -526,10 +526,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     (0, -1),
                 ];
 
-                for i in 0..4 {
+                for i in 0..offsets.len() {
                     // shuffle offsets
-                    let i = rng.next_i32_between(0, 3 - i) as usize;
-                    let offset = offsets.remove(i);
+                    let min = 0;
+                    let max = (offsets.len() - 1) as i32;
+                    let i = rng.next_i32_between(min, max) as usize;
+                    let offset = offsets.swap_remove(i);
 
                     let ((ix_, iy_), side_) = remap_index_over_edge(
                         (ix as isize + offset.0, iy as isize + offset.1),
@@ -545,15 +547,98 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                         unchecked_boundaries.push((
                             (ix, iy),
                             height_map.borrow().side,
+                            continent_index_rhs,
+                            0,
                         ));
                         break;
                     }
                 }
             }
         }
+    } // find edges
+
+    // create continent boundary space
+    // i.e. find for each pixel the closest neighboring continent
+    // do so using a fill operation, basically a BFS originating from the edges
+    eprintln!("create continent boundary space...");
+
+    let mut continent_boundary_space = Vec::with_capacity(6);
+    for i in 0..continent_boundary_space.capacity() {
+        let mut side = vec![None; width * width];
+        continent_boundary_space.push(side);
     }
 
-    panic!("visualize boundaries");
+    loop {
+        // discover new pixels
+        let mut new_unchecked_boundaries = Vec::new();
+
+        for ((ix, iy), side, continent_index, generation) in unchecked_boundaries.into_iter() {
+            let pixel = &mut continent_boundary_space[side.to_index()][iy * width + ix];
+            if pixel.is_some() {
+                continue;
+            }
+
+            *pixel = Some((continent_index, generation));
+
+            let mut offsets = vec![
+                (1, 0),
+                (-1, 0),
+                (0, 1),
+                (0, -1),
+            ];
+
+            for i in 0..offsets.len() {
+                // shuffle offsets
+                let min = 0;
+                let max = (offsets.len() - 1) as i32;
+                let i = rng.next_i32_between(min, max) as usize;
+                let offset = offsets.swap_remove(i);
+
+                let ((ix_, iy_), side_) = remap_index_over_edge(
+                    (ix as isize + offset.0, iy as isize + offset.1),
+                    width,
+                    side,
+                ).expect("offsets to not go over corners, only edges");
+
+                new_unchecked_boundaries.push((
+                    (ix_, iy_),
+                    side_,
+                    continent_index,
+                    generation + 1,
+                ));
+            }
+        }
+
+        if new_unchecked_boundaries.is_empty() {
+            break;
+        }
+
+        unchecked_boundaries = new_unchecked_boundaries;
+    }
+
+    // use continent boundary space to determine height
+    for (side_index, side_values) in continent_boundary_space.iter().enumerate() {
+        for iy in 0..width {
+            for ix in 0..width {
+                let i = iy * width + ix;
+                let (
+                    nearest_continent_index,
+                    generation,
+                ) = side_values[i].expect("all pixels to be discovered");
+
+                let height_map = &sides[side_index].height_map;
+                let mut h = height_map.borrow().get(ix, iy);
+                //h.height = nearest_continent_index as f32;
+                h.height = generation as f32;
+                height_map.borrow_mut().set(ix, iy, h);
+            }
+        }
+    }
+
+    normalize(&mut sides, None);
+
+    return prepare_proto_sides(sides);
+
 
     //////////////////////////////////////////////
 
@@ -1234,23 +1319,25 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     normalize(&mut sides, None);
 
     // prepare result
-    let mut result = Vec::new();
-    for side in sides.into_iter() {
-        let height_map = side.height_map.borrow();
+    //let mut result = Vec::new();
+    //for side in sides.into_iter() {
+    //    let height_map = side.height_map.borrow();
 
-        let values = height_map
-            .values
-            .iter()
-            .map(|x| x.height)
-            .collect::<Vec<_>>();
-        let side = height_map.side;
+    //    let values = height_map
+    //        .values
+    //        .iter()
+    //        .map(|x| x.height)
+    //        .collect::<Vec<_>>();
+    //    let side = height_map.side;
 
-        let height_map = HeightMap { values, side };
+    //    let height_map = HeightMap { values, side };
 
-        result.push(height_map);
-    }
+    //    result.push(height_map);
+    //}
 
-    result
+    //result
+
+    prepare_proto_sides(sides)
 }
 
 #[derive(Clone, Copy)]
@@ -1621,3 +1708,22 @@ fn deposit_sediment(
     }
 }
 
+fn prepare_proto_sides(sides: impl AsRef<[ProtoSide]>) -> Vec<HeightMap> {
+    let mut result = Vec::new();
+    for side in sides.as_ref().into_iter() {
+        let height_map = side.height_map.borrow();
+
+        let values = height_map
+            .values
+            .iter()
+            .map(|x| x.height)
+            .collect::<Vec<_>>();
+        let side = height_map.side;
+
+        let height_map = HeightMap { values, side };
+
+        result.push(height_map);
+    }
+
+    result
+}
