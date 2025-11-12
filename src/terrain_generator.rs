@@ -89,7 +89,8 @@ pub struct Args {
     pub seed: Seed,
     pub width: usize,
     pub continent_count: usize,
-    pub kernel_radius: f32,
+    //pub kernel_radius: f32,
+    pub continental_mountain_thickness: usize,
     pub fractal_main_layer: usize,
     pub fractal_weight: f32,
     pub erosion_kind: ErosionKind,
@@ -116,7 +117,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         seed,
         width,
         continent_count,
-        kernel_radius,
+        //kernel_radius,
+        continental_mountain_thickness,
         fractal_main_layer,
         fractal_weight,
         erosion_kind,
@@ -135,7 +137,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     eprintln!("seed: {:?}", seed);
     let mut rng = Rng::new(seed);
-    let kernel_radius = kernel_radius as isize;
+    //let kernel_radius = kernel_radius as isize;
 
     eprintln!("resolution: {}x{}", width, width);
 
@@ -564,7 +566,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     let mut continent_boundary_space = Vec::with_capacity(6);
     for i in 0..continent_boundary_space.capacity() {
-        let mut side = vec![None; width * width];
+        let side = vec![None; width * width];
         continent_boundary_space.push(side);
     }
 
@@ -578,7 +580,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 continue;
             }
 
-            *pixel = Some((continent_index, generation));
+            *pixel = Some(((ix, iy), side, generation));
 
             let mut offsets = vec![
                 (1, 0),
@@ -622,14 +624,25 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             for ix in 0..width {
                 let i = iy * width + ix;
                 let (
-                    nearest_continent_index,
+                    (nearest_x, nearest_y),
+                    nearest_side,
                     generation,
                 ) = side_values[i].expect("all pixels to be discovered");
 
+                if generation > continental_mountain_thickness {
+                    continue;
+                }
+
+                // https://www.desmos.com/calculator/4p8se0qln8
+                let m = continental_mountain_thickness as f32;
+                let x = -m + generation as f32;
+                let weight = (x*x)/(m*m);
+
+                // TODO: continent collision math here
+
                 let height_map = &sides[side_index].height_map;
                 let mut h = height_map.borrow().get(ix, iy);
-                //h.height = nearest_continent_index as f32;
-                h.height = generation as f32;
+                h.height = weight;
                 height_map.borrow_mut().set(ix, iy, h);
             }
         }
@@ -1315,6 +1328,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             water *= 1.0 - erosion_evaporate_speed;
         } // erosion max lifetime
     } // erosion iterations
+    
+    todo!("implement planned normalization between erosion steps");
 
     normalize(&mut sides, None);
 
