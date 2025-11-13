@@ -80,6 +80,9 @@ impl From<usize> for Side {
     }
 }
 
+#[allow(dead_code)]
+// justification: implementation exists, and client code may
+// choose the currently un-instantiated value in the future
 pub enum ErosionKind {
     Stride,
     Rng,
@@ -89,12 +92,12 @@ pub struct Args {
     pub seed: Seed,
     pub width: usize,
     pub continent_count: usize,
-    //pub kernel_radius: f32,
     pub continental_mountain_thickness: usize,
     pub fractal_main_layer: usize,
     pub fractal_weight: f32,
     pub erosion_kind: ErosionKind,
     pub erosion_iterations: usize,
+    pub erosion_normalize_mod: usize,
     pub erosion_max_lifetime: usize,
     pub erosion_start_speed: f32,
     pub erosion_start_water: f32,
@@ -123,6 +126,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         fractal_weight,
         erosion_kind,
         erosion_iterations,
+        erosion_normalize_mod,
         erosion_max_lifetime,
         erosion_start_speed,
         erosion_start_water,
@@ -137,7 +141,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     eprintln!("seed: {:?}", seed);
     let mut rng = Rng::new(seed);
-    //let kernel_radius = kernel_radius as isize;
 
     eprintln!("resolution: {}x{}", width, width);
 
@@ -238,7 +241,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
             let candidate = ContinentPixel { side, ix, iy };
 
-            let candidate_exists = starting_positions.iter().any(|x| *x == candidate);
+            let candidate_exists = starting_positions.contains(&candidate);
             if candidate_exists {
                 continue;
             }
@@ -503,9 +506,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         }
     }
 
-    // initial bench: 20.911212589s
-    let continent_start = std::time::Instant::now();
-
     // find edges
     eprintln!("find continent edges...");
 
@@ -521,14 +521,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let h = height_map.borrow().get(ix, iy);
                 let continent_index_lhs = h.continent_index;
 
-                let mut offsets = vec![
-                    (1, 0),
-                    (-1, 0),
-                    (0, 1),
-                    (0, -1),
-                ];
+                let mut offsets = vec![(1, 0), (-1, 0), (0, 1), (0, -1)];
 
-                for i in 0..offsets.len() {
+                for _ in 0..offsets.len() {
                     // shuffle offsets
                     let min = 0;
                     let max = (offsets.len() - 1) as i32;
@@ -539,7 +534,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                         (ix as isize + offset.0, iy as isize + offset.1),
                         width,
                         side.height_map.borrow().side,
-                    ).expect("offsets to not go over corners, only edges");
+                    )
+                    .expect("offsets to not go over corners, only edges");
 
                     let h_ = sides[side_.to_index()].height_map.borrow().get(ix_, iy_);
                     let continent_index_rhs = h_.continent_index;
@@ -565,7 +561,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     eprintln!("create continent boundary space...");
 
     let mut continent_boundary_space = Vec::with_capacity(6);
-    for i in 0..continent_boundary_space.capacity() {
+    for _ in 0..continent_boundary_space.capacity() {
         let side = vec![None; width * width];
         continent_boundary_space.push(side);
     }
@@ -582,14 +578,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
             *pixel = Some(((ix, iy), side, generation));
 
-            let mut offsets = vec![
-                (1, 0),
-                (-1, 0),
-                (0, 1),
-                (0, -1),
-            ];
+            let mut offsets = vec![(1, 0), (-1, 0), (0, 1), (0, -1)];
 
-            for i in 0..offsets.len() {
+            for _ in 0..offsets.len() {
                 // shuffle offsets
                 let min = 0;
                 let max = (offsets.len() - 1) as i32;
@@ -600,14 +591,10 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     (ix as isize + offset.0, iy as isize + offset.1),
                     width,
                     side,
-                ).expect("offsets to not go over corners, only edges");
+                )
+                .expect("offsets to not go over corners, only edges");
 
-                new_unchecked_boundaries.push((
-                    (ix_, iy_),
-                    side_,
-                    continent_index,
-                    generation + 1,
-                ));
+                new_unchecked_boundaries.push(((ix_, iy_), side_, continent_index, generation + 1));
             }
         }
 
@@ -623,244 +610,71 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         for iy in 0..width {
             for ix in 0..width {
                 let i = iy * width + ix;
-                let (
-                    (nearest_x, nearest_y),
-                    nearest_side,
-                    generation,
-                ) = side_values[i].expect("all pixels to be discovered");
+                let ((ix_, iy_), side_, generation) =
+                    side_values[i].expect("all pixels to be discovered");
 
                 if generation > continental_mountain_thickness {
                     continue;
                 }
 
+                // prepare
+                let height_map = &sides[side_index].height_map;
+                let height_map_ = &sides[side_.to_index()].height_map;
+                let mut h = height_map.borrow().get(ix, iy);
+                let h_ = height_map_.borrow().get(ix_, iy_);
+
+                let continent = &continents[h.continent_index];
+                let continent_ = &continents[h_.continent_index];
+
+                // calculate boundary height
+                let angle = 2.0 * PI / (4 * width) as f32;
+                let q = Quat::angle_axis(angle, continent.rotation_axis);
+                let q_ = Quat::angle_axis(angle, continent_.rotation_axis);
+
+                let p = position_on_sphere((ix, iy), width, height_map.borrow().side);
+                let p_ = position_on_sphere((ix_, iy_), width, height_map_.borrow().side);
+
+                let v = (q.rotate(p) - p).normalize();
+                let v_ = (q_.rotate(p_) - p_).normalize();
+
+                let origin_pixel = continent.origin.clone();
+
+                let o = position_on_sphere(
+                    (origin_pixel.ix, origin_pixel.iy),
+                    width,
+                    origin_pixel.side,
+                );
+                let d = p - o;
+                let d_ = p_ - o;
+
+                // formular for smoother, but in my opinion
+                // less interesting terrain:
+                // let m = (p * p_) / 2.0;
+                // let d = p - m;
+                // let d_ = m - p_;
+
+                let dot = Vec3::dot(v.normalize(), d.normalize());
+                let dot_ = Vec3::dot(v_.normalize(), d_.normalize());
+
+                let boundary_height = match (dot.is_sign_positive(), dot_.is_sign_positive()) {
+                    (false, false) => -(dot * dot_),
+                    (true, false) => -(dot * dot_),
+                    (false, true) => -(dot * dot_),
+                    (true, true) => dot * dot_,
+                };
+
                 // https://www.desmos.com/calculator/4p8se0qln8
                 let m = continental_mountain_thickness as f32;
                 let x = -m + generation as f32;
-                let weight = (x*x)/(m*m);
+                let weight = (x * x) / (m * m);
 
-                // TODO: continent collision math here
-
-                let height_map = &sides[side_index].height_map;
-                let mut h = height_map.borrow().get(ix, iy);
-                h.height = weight;
+                h.height = boundary_height * weight;
                 height_map.borrow_mut().set(ix, iy, h);
             }
         }
     }
 
-    normalize(&mut sides, None);
-
-    return prepare_proto_sides(sides);
-
-
-    //////////////////////////////////////////////
-
-    //// generate kernel
-    //eprintln!("generate kernel");
-    //let mut kernel = Vec::new();
-
-    //for iy in -kernel_radius..=kernel_radius {
-    //    for ix in -kernel_radius..=kernel_radius {
-    //        let x = ix as f32;
-    //        let y = iy as f32;
-    //        let d = f32::sqrt(x * x + y * y);
-    //        if d < kernel_radius as f32 {
-    //            kernel.push(((ix, iy), d));
-    //        }
-    //    }
-    //}
-
-    //kernel.sort_by(|l, r| l.1.total_cmp(&r.1));
-
-    //// calculate heights on continent boundaries
-    //eprintln!(
-    //    "calculate height based on plate boundaries... {}",
-    //    discovered_pixel_count
-    //);
-
-    //let mut min_continent = f32::MAX;
-    //let mut max_continent = f32::MIN;
-
-    //for side in sides.iter() {
-    //    let ProtoSide {
-    //        perlin_sampler: _,
-    //        height_map,
-    //    } = side;
-
-    //    for iy in 0..width {
-    //        eprintln!(
-    //            "finding plate boundaries {}... progress: {}/{}",
-    //            height_map.borrow().side,
-    //            iy,
-    //            width,
-    //        );
-
-    //        for ix in 0..width {
-    //            let h = height_map.borrow().get(ix, iy);
-    //            let continent_index_lhs = h.continent_index;
-    //            let continent = &continents[continent_index_lhs];
-
-    //            for &((kx, ky), kd) in kernel.iter() {
-    //                if kx == 0 && ky == 0 {
-    //                    continue;
-    //                }
-
-    //                let ix_ = ix as isize + kx;
-    //                let iy_ = iy as isize + ky;
-    //                let side_ = height_map.borrow().side;
-
-    //                let w = width as isize;
-
-    //                let falls_on_left = ix_ < 0;
-    //                let falls_on_right = ix_ >= w;
-    //                let falls_on_upper = iy_ < 0;
-    //                let falls_on_lower = iy_ >= w;
-
-    //                let falls_on_upper_left = falls_on_upper && falls_on_left;
-    //                let falls_on_upper_right = falls_on_upper && falls_on_right;
-    //                let falls_on_lower_left = falls_on_lower && falls_on_left;
-    //                let falls_on_lower_right = falls_on_lower && falls_on_right;
-
-    //                let falls_on_corner = falls_on_upper_left
-    //                    || falls_on_upper_right
-    //                    || falls_on_lower_left
-    //                    || falls_on_lower_right;
-
-    //                if falls_on_corner {
-    //                    continue;
-    //                }
-
-    //                // map ix_ and iy_ onto correct side
-    //                let (ix_, iy_, mapped_side_) = if falls_on_left {
-    //                    let d = ix as isize + 1;
-    //                    // kx is negative, negate to make math more intuitive
-    //                    let kx = -kx;
-    //                    match side_ {
-    //                        Side::L => (w - 1 - kx + d, iy_, Side::F),
-    //                        Side::B => (w - 1 - kx + d, iy_, Side::L),
-    //                        Side::R => (w - 1 - kx + d, iy_, Side::B),
-    //                        Side::F => (w - 1 - kx + d, iy_, Side::R),
-    //                        Side::U => (iy_, kx - d, Side::L),
-    //                        Side::D => (w - 1 - iy_, w - 1 - kx + d, Side::L),
-    //                    }
-    //                } else if falls_on_right {
-    //                    let d = width as isize - ix as isize;
-    //                    match side_ {
-    //                        Side::L => (kx - d, iy_, Side::B),
-    //                        Side::B => (kx - d, iy_, Side::R),
-    //                        Side::R => (kx - d, iy_, Side::F),
-    //                        Side::F => (kx - d, iy_, Side::L),
-    //                        Side::U => (w - 1 - iy_, kx - d, Side::R),
-    //                        Side::D => (iy_, w - 1 - kx + d, Side::R),
-    //                    }
-    //                } else if falls_on_upper {
-    //                    let d = iy as isize + 1;
-    //                    // ky is negative, negate to make math more intuitive
-    //                    let ky = -ky;
-    //                    match side_ {
-    //                        Side::L => (ky - d, ix_, Side::U),
-    //                        Side::B => (ix_, w - 1 - ky + d, Side::U),
-    //                        Side::R => (w - 1 - ky + d, w - 1 - ix_, Side::U),
-    //                        Side::F => (w - 1 - ix_, ky - d, Side::U),
-    //                        Side::U => (w - 1 - ix_, ky - d, Side::F),
-    //                        Side::D => (ix_, w - 1 - ky + d, Side::B),
-    //                    }
-    //                } else if falls_on_lower {
-    //                    let d = width as isize - iy as isize;
-    //                    match side_ {
-    //                        Side::L => (ky - d, w - 1 - ix_, Side::D),
-    //                        Side::B => (ix_, ky - d, Side::D),
-    //                        Side::R => (w - 1 - ky + d, ix_, Side::D),
-    //                        Side::F => (w - 1 - ix_, w - 1 - ky + d, Side::D),
-    //                        Side::U => (ix_, ky - d, Side::B),
-    //                        Side::D => (w - 1 - ix_, w - 1 - ky + d, Side::F),
-    //                    }
-    //                } else {
-    //                    (ix_, iy_, side_)
-    //                };
-
-    //                let ix_ = ix_ as usize;
-    //                let iy_ = iy_ as usize;
-
-    //                let height_map_ = &sides
-    //                    .iter()
-    //                    .find(|x| x.height_map.borrow().side == mapped_side_)
-    //                    .expect("height map to exist")
-    //                    .height_map;
-    //                let Some(h_) = height_map_.borrow().try_get(ix_, iy_) else {
-    //                    println!("after map 1: {} {} {} {}", width, side_, ix_, iy_);
-    //                    println!("after map 2: {} {} {} {}", kx, ky, ix, iy);
-    //                    panic!();
-    //                };
-
-    //                if h.continent_index == h_.continent_index {
-    //                    continue;
-    //                }
-
-    //                // boundary found, calculate height
-    //                let continent_ = &continents[h_.continent_index];
-
-    //                let angle = 2.0 * PI / (4 * width) as f32;
-    //                let q = Quat::angle_axis(angle, continent.rotation_axis);
-    //                let q_ = Quat::angle_axis(angle, continent_.rotation_axis);
-
-    //                let p = position_on_sphere((ix, iy), width, height_map.borrow().side);
-    //                let p_ = position_on_sphere((ix_, iy_), width, height_map_.borrow().side);
-
-    //                let v = (q.rotate(p) - p).normalize();
-    //                let v_ = (q_.rotate(p_) - p_).normalize();
-
-    //                let origin_pixel = continent.origin.clone();
-
-    //                let o = position_on_sphere(
-    //                    (origin_pixel.ix, origin_pixel.iy),
-    //                    width,
-    //                    origin_pixel.side,
-    //                );
-    //                let d = p - o;
-    //                let d_ = p_ - o;
-
-    //                // formular for smoother, but in my opinion
-    //                // less interesting terrain:
-    //                // let m = (p * p_) / 2.0;
-    //                // let d = p - m;
-    //                // let d_ = m - p_;
-
-    //                let dot = Vec3::dot(v.normalize(), d.normalize());
-    //                let dot_ = Vec3::dot(v_.normalize(), d_.normalize());
-
-    //                let boundary_height = match (dot.is_sign_positive(), dot_.is_sign_positive()) {
-    //                    (false, false) => dot * dot_,
-    //                    (true, false) => dot * dot_ * -1.0,
-    //                    (false, true) => dot * dot_,
-    //                    (true, true) => dot * dot_,
-    //                };
-
-    //                // https://www.desmos.com/calculator/2oekg4vn5i
-    //                let a = (kd.abs() / kernel_radius as f32) - 1.0;
-    //                let weight = 1.0 - f32::sqrt(1.0 - a * a);
-
-    //                let mut h = height_map.borrow().get(ix, iy);
-    //                h.height += weight * boundary_height;
-    //                height_map.borrow_mut().set(ix, iy, h);
-
-    //                min_continent = f32::min(min_continent, h.height);
-    //                max_continent = f32::max(max_continent, h.height);
-
-    //                break;
-    //            }
-    //        }
-    //    }
-    //}
-
-    //eprintln!("continent min: {}, max: {}", min_continent, max_continent);
-
-    //// continents end
-    //normalize(&mut sides, Some(129.8125 / 255.0));
-    
-    let continent_end = std::time::Instant::now();
-    let continent_elapsed = continent_end - continent_start;
-    eprintln!("continent generation took {:?}", continent_elapsed);
+    normalize(&mut sides, Some(129.8125 / 255.0));
 
     // sides
     for (i, side) in sides.iter().enumerate() {
@@ -868,8 +682,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             perlin_sampler,
             height_map,
         } = side;
-
-        eprintln!("generating side... {} ({})", height_map.borrow().side, i);
 
         let mut layer = 0;
         loop {
@@ -888,9 +700,9 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             }
 
             for iy in 0..width {
-                if iy % 100 == 0 {
+                if iy % 1000 == 0 {
                     eprintln!(
-                        "generating side {} ({})... progress: {}/{} layer: {}",
+                        "generating noise... {} ({}/6) progress: {}/{} layer: {}",
                         height_map.borrow().side,
                         i,
                         iy,
@@ -1007,6 +819,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     for side in sides.iter_mut() {
         for h in side.height_map.borrow_mut().values.iter_mut() {
             //// sigmoid
+            //https://www.desmos.com/calculator/er6jzcri6d
             //let steepness = 10.0;
             //let center = 0.5;
             //*h = 1.0 / (1.0 + f32::exp(-steepness * (*h - center)));
@@ -1054,7 +867,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     let mut idrop = rng.next_usize();
     for i in 0..erosion_iterations {
-        if i % 10_000 == 0 {
+        if i % 100_000 == 0 {
             let progress = i as f32 / erosion_iterations as f32 * 100.0;
             eprintln!("erode... {}%", progress,);
         }
@@ -1327,31 +1140,15 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             ));
             water *= 1.0 - erosion_evaporate_speed;
         } // erosion max lifetime
+
+        if i % erosion_normalize_mod == 0 {
+            normalize(&mut sides, None);
+        }
     } // erosion iterations
-    
-    todo!("implement planned normalization between erosion steps");
 
     normalize(&mut sides, None);
 
     // prepare result
-    //let mut result = Vec::new();
-    //for side in sides.into_iter() {
-    //    let height_map = side.height_map.borrow();
-
-    //    let values = height_map
-    //        .values
-    //        .iter()
-    //        .map(|x| x.height)
-    //        .collect::<Vec<_>>();
-    //    let side = height_map.side;
-
-    //    let height_map = HeightMap { values, side };
-
-    //    result.push(height_map);
-    //}
-
-    //result
-
     prepare_proto_sides(sides)
 }
 
@@ -1384,11 +1181,6 @@ impl ProtoHeightMap {
     fn get(&self, x: usize, y: usize) -> ProtoHeightMapValue {
         let i = self.index(x, y);
         self.values[i]
-    }
-
-    fn try_get(&self, x: usize, y: usize) -> Option<ProtoHeightMapValue> {
-        let i = x.checked_add(y.checked_mul(self.width)?)?;
-        self.values.get(i).cloned()
     }
 
     fn set(&mut self, x: usize, y: usize, value: ProtoHeightMapValue) {
@@ -1725,7 +1517,7 @@ fn deposit_sediment(
 
 fn prepare_proto_sides(sides: impl AsRef<[ProtoSide]>) -> Vec<HeightMap> {
     let mut result = Vec::new();
-    for side in sides.as_ref().into_iter() {
+    for side in sides.as_ref().iter() {
         let height_map = side.height_map.borrow();
 
         let values = height_map

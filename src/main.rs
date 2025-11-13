@@ -12,59 +12,38 @@ mod vector;
 
 fn main() {
     // settings
-    let seed = rng::Seed::default();
-    //let seed = rng::Seed(219210066744428508627496644956906248916);
-    let width = 1 << 8; // target 12
-    
-    //let args = terrain_generator::Args {
-    //    seed,
-    //    width,
-    //    continent_count: 6,
-    //    kernel_radius: width as f32 * 0.75,
-    //    fractal_main_layer: 1,
-    //    fractal_weight: 0.25,
-    //    erosion_iterations: 20 * width * width * 6,
-    //    erosion_max_lifetime: 10,
-    //    erosion_start_speed: 1.0,
-    //    erosion_start_water: 1.0,
-    //    erosion_inertia: 0.3,
-    //    erosion_min_sediment_capacity: 0.01,
-    //    erosion_sediment_capacity_factor: 3.0,
-    //    erosion_erode_speed: 0.003,
-    //    erosion_deposit_speed: 0.003,
-    //    erosion_gravity: 4.0,
-    //    erosion_evaporate_speed: 0.01,
-    //};
+    let seed = rng::Seed::new();
+    let width = 1 << 6;
 
     let args = terrain_generator::Args {
         seed,
         width,
         continent_count: 6,
-        //kernel_radius: width as f32 * 0.5,
         continental_mountain_thickness: width / 2,
         fractal_main_layer: 2,
         fractal_weight: 0.25,
         erosion_kind: terrain_generator::ErosionKind::Rng,
-        erosion_iterations: 0 * width * width * 6,
-        erosion_max_lifetime: 25,
-        erosion_start_speed: 1.0,
-        erosion_start_water: 1.0,
-        erosion_inertia: 0.3,
-        erosion_min_sediment_capacity: 0.01,
-        erosion_sediment_capacity_factor: 6.0,
-        erosion_erode_speed: 0.005,
-        erosion_deposit_speed: 0.005,
-        erosion_gravity: 2.0,
-        erosion_evaporate_speed: 0.01,
+        erosion_iterations: width * width * 6,
+        erosion_normalize_mod: width * width * 6,
+        erosion_max_lifetime: 20,              // 10
+        erosion_start_speed: 1.0,              // 1.0
+        erosion_start_water: 2.0,              // 1.0
+        erosion_inertia: 0.3,                  // 0.3
+        erosion_min_sediment_capacity: 0.01,   // 0.01
+        erosion_sediment_capacity_factor: 5.0, // 3.0
+        erosion_erode_speed: 0.004,            // 0.004
+        erosion_deposit_speed: 0.004,          // 0.003
+        erosion_gravity: 8.0,                  // 4.0
+        erosion_evaporate_speed: 0.01,         // 0.01
     };
 
     // run terrain generator
     let result = terrain_generator::run(args);
 
     // use heightmap as desired
-    //if let Err(e) = save_as_bin(width, &result) {
-    //    eprintln!("failed to safe bin: {}", e);
-    //}
+    if let Err(e) = save_as_bin(width, &result) {
+        eprintln!("failed to safe bin: {}", e);
+    }
 
     if let Err(e) = save_as_qoi(width, &result) {
         eprintln!("failed to safe qoi: {}", e);
@@ -83,7 +62,7 @@ fn save_as_bin<'a>(
 
     for (i, height_map) in height_maps.into_iter().enumerate() {
         let HeightMap { values, side } = height_map;
-        
+
         eprintln!("serializing bin... {}/6", i + 1);
 
         let path_string = format!("{}x{}_f32_{}.bin", width, width, side);
