@@ -603,7 +603,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                     let i = rng.next_i32_between(min, max) as usize;
                     let offset = offsets.swap_remove(i);
 
-                    let ((ix_, iy_), side_) = remap_index_over_edge(
+                    let RemappedIndex {
+                        ix: ix_,
+                        iy: iy_,
+                        side: side_,
+                    } = RemappedIndex::new(
                         (ix as isize + offset.0, iy as isize + offset.1),
                         width,
                         side.height_map.borrow().side,
@@ -638,7 +642,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     }
 
     let mut count = 0;
-    let total_continent_boundary_space_len = (continent_boundary_space.len() * width * width) as f32;
+    let total_continent_boundary_space_len =
+        (continent_boundary_space.len() * width * width) as f32;
 
     loop {
         // discover new pixels
@@ -667,7 +672,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let i = rng.next_i32_between(min, max) as usize;
                 let offset = offsets.swap_remove(i);
 
-                let ((ix_, iy_), side_) = remap_index_over_edge(
+                let RemappedIndex {
+                    ix: ix_,
+                    iy: iy_,
+                    side: side_,
+                } = RemappedIndex::new(
                     (ix as isize + offset.0, iy as isize + offset.1),
                     width,
                     side,
@@ -794,10 +803,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             for iy in 0..width {
                 if iy % 1000 == 0 {
                     let process = (count as f32 / total as f32) * 100.0;
-                    eprintln!(
-                        "[5/8] generating noise... {}%",
-                        process,
-                    );
+                    eprintln!("[5/8] generating noise... {}%", process,);
                 }
                 count += 1;
 
@@ -1186,7 +1192,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let deposit_se = amount_to_deposit * weight_se;
 
                 let i = (pos.0 as isize, pos.1 as isize);
-                let (onw, one, osw, ose) = eko.get_offsets();
+                let ErosionKernelOriginOffsets {
+                    nw: onw,
+                    ne: one,
+                    sw: osw,
+                    se: ose,
+                } = eko.get_offsets();
                 let inw = (i.0 + onw.0, i.1 + onw.1);
                 let ine = (i.0 + one.0, i.1 + one.1);
                 let isw = (i.0 + osw.0, i.1 + osw.1);
@@ -1235,7 +1246,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             normalize(&mut sides, None);
         }
     } // erosion iterations
-
 
     // prepare result
     eprintln!("[8/8] prepare result...");
@@ -1319,13 +1329,20 @@ struct Continent {
 }
 
 // erosion samples 4 cells at different steps. when the droplet goes over a cube edge, the kernel
-// may be rotated, and thus changing the "origin cell" that the droplet may find itself in.
+// may be rotated, and thus changing the "origin" that the droplet may find itself in.
 #[derive(Debug, Clone, Copy)]
 enum ErosionKernelOrigin {
     NW,
     NE,
     SW,
     SE,
+}
+
+struct ErosionKernelOriginOffsets {
+    nw: (isize, isize),
+    ne: (isize, isize),
+    sw: (isize, isize),
+    se: (isize, isize),
 }
 
 impl Default for ErosionKernelOrigin {
@@ -1359,19 +1376,32 @@ impl ErosionKernelOrigin {
     }
 
     // returns offsets for (nw, ne, sw, se)
-    fn get_offsets(
-        self,
-    ) -> (
-        (isize, isize),
-        (isize, isize),
-        (isize, isize),
-        (isize, isize),
-    ) {
+    fn get_offsets(self) -> ErosionKernelOriginOffsets {
         match self {
-            ErosionKernelOrigin::NW => ((0, 0), (1, 0), (0, 1), (1, 1)),
-            ErosionKernelOrigin::NE => ((-1, 0), (0, 0), (-1, 1), (0, 1)),
-            ErosionKernelOrigin::SW => ((0, -1), (1, -1), (0, 0), (1, 0)),
-            ErosionKernelOrigin::SE => ((-1, -1), (0, -1), (-1, 0), (0, 0)),
+            ErosionKernelOrigin::NW => ErosionKernelOriginOffsets {
+                nw: (0, 0),
+                ne: (1, 0),
+                sw: (0, 1),
+                se: (1, 1),
+            },
+            ErosionKernelOrigin::NE => ErosionKernelOriginOffsets {
+                nw: (-1, 0),
+                ne: (0, 0),
+                sw: (-1, 1),
+                se: (0, 1),
+            },
+            ErosionKernelOrigin::SW => ErosionKernelOriginOffsets {
+                nw: (0, -1),
+                ne: (1, -1),
+                sw: (0, 0),
+                se: (1, 0),
+            },
+            ErosionKernelOrigin::SE => ErosionKernelOriginOffsets {
+                nw: (-1, -1),
+                ne: (0, -1),
+                sw: (-1, 0),
+                se: (0, 0),
+            },
         }
     }
 }
@@ -1460,83 +1490,103 @@ fn gcd(mut a: usize, mut b: usize) -> usize {
     a
 }
 
-fn remap_index_over_edge(
-    i: (isize, isize),
-    width: usize,
+#[derive(Debug)]
+struct RemappedIndex {
+    ix: usize,
+    iy: usize,
     side: Side,
-) -> Result<((usize, usize), Side), (((usize, usize), Side), ((usize, usize), Side))> {
-    let (ix, iy) = i;
-    let w = width as isize;
+}
 
-    let ((new_ix, new_iy), new_side) = if ix >= 0 && ix < w && iy >= 0 && iy < w {
-        // x and y are in range, nothing needs to be wrapped
-        (i, side)
-    } else if ix < 0 && iy >= 0 && iy < w {
-        // x is too small, y is in range
-        // move left
-        match side {
-            Side::L => ((w + ix, iy), Side::F),
-            Side::B => ((w + ix, iy), Side::L),
-            Side::R => ((w + ix, iy), Side::B),
-            Side::F => ((w + ix, iy), Side::R),
-            Side::U => ((iy, -ix - 1), Side::L),
-            Side::D => ((w - iy - 1, w + ix), Side::L),
-        }
-    } else if ix >= w && iy >= 0 && iy < w {
-        // x is too large, y is in range
-        // move right
-        match side {
-            Side::L => ((ix - w, iy), Side::B),
-            Side::B => ((ix - w, iy), Side::R),
-            Side::R => ((ix - w, iy), Side::F),
-            Side::F => ((ix - w, iy), Side::L),
-            Side::U => ((w - iy - 1, ix - w), Side::R),
-            Side::D => ((iy, 2 * w - ix - 1), Side::R),
-        }
-    } else if ix >= 0 && ix < w && iy < 0 {
-        // x is in range, y is too small
-        // move up
-        match side {
-            Side::L => ((-iy - 1, ix), Side::U),
-            Side::B => ((ix, w + iy), Side::U),
-            Side::R => ((w + iy, w - ix - 1), Side::U),
-            Side::F => ((w - ix - 1, -iy - 1), Side::U),
-            Side::U => ((w - ix - 1, -iy - 1), Side::F),
-            Side::D => ((ix, w + iy), Side::B),
-        }
-    } else if ix >= 0 && ix < w && iy >= w {
-        // x is in range, y is too large
-        // move down
-        match side {
-            Side::L => ((iy - w, w - ix - 1), Side::D),
-            Side::B => ((ix, iy - w), Side::D),
-            Side::R => ((2 * w - iy - 1, ix), Side::D),
-            Side::F => ((w - ix - 1, 2 * w - iy - 1), Side::D),
-            Side::U => ((ix, iy - w), Side::B),
-            Side::D => ((w - ix - 1, 2 * w - iy - 1), Side::F),
-        }
-    } else {
-        // neither is in range. client must wrap x and y themself
-        let clamped_ix = isize::clamp(ix, 0, w - 1);
-        let clamped_iy = isize::clamp(iy, 0, w - 1);
+impl RemappedIndex {
+    fn new(i: (isize, isize), width: usize, side: Side) -> Result<Self, (Self, Self)> {
+        let (ix, iy) = i;
+        let w = width as isize;
 
-        let val1 = remap_index_over_edge((clamped_ix, iy), width, side).unwrap();
-        let val2 = remap_index_over_edge((ix, clamped_iy), width, side).unwrap();
+        let ((new_ix, new_iy), new_side) = if ix >= 0 && ix < w && iy >= 0 && iy < w {
+            // x and y are in range, nothing needs to be wrapped
+            (i, side)
+        } else if ix < 0 && iy >= 0 && iy < w {
+            // x is too small, y is in range
+            // move left
+            match side {
+                Side::L => ((w + ix, iy), Side::F),
+                Side::B => ((w + ix, iy), Side::L),
+                Side::R => ((w + ix, iy), Side::B),
+                Side::F => ((w + ix, iy), Side::R),
+                Side::U => ((iy, -ix - 1), Side::L),
+                Side::D => ((w - iy - 1, w + ix), Side::L),
+            }
+        } else if ix >= w && iy >= 0 && iy < w {
+            // x is too large, y is in range
+            // move right
+            match side {
+                Side::L => ((ix - w, iy), Side::B),
+                Side::B => ((ix - w, iy), Side::R),
+                Side::R => ((ix - w, iy), Side::F),
+                Side::F => ((ix - w, iy), Side::L),
+                Side::U => ((w - iy - 1, ix - w), Side::R),
+                Side::D => ((iy, 2 * w - ix - 1), Side::R),
+            }
+        } else if ix >= 0 && ix < w && iy < 0 {
+            // x is in range, y is too small
+            // move up
+            match side {
+                Side::L => ((-iy - 1, ix), Side::U),
+                Side::B => ((ix, w + iy), Side::U),
+                Side::R => ((w + iy, w - ix - 1), Side::U),
+                Side::F => ((w - ix - 1, -iy - 1), Side::U),
+                Side::U => ((w - ix - 1, -iy - 1), Side::F),
+                Side::D => ((ix, w + iy), Side::B),
+            }
+        } else if ix >= 0 && ix < w && iy >= w {
+            // x is in range, y is too large
+            // move down
+            match side {
+                Side::L => ((iy - w, w - ix - 1), Side::D),
+                Side::B => ((ix, iy - w), Side::D),
+                Side::R => ((2 * w - iy - 1, ix), Side::D),
+                Side::F => ((w - ix - 1, 2 * w - iy - 1), Side::D),
+                Side::U => ((ix, iy - w), Side::B),
+                Side::D => ((w - ix - 1, 2 * w - iy - 1), Side::F),
+            }
+        } else {
+            // neither is in range. client must wrap x and y themself
+            let clamped_ix = isize::clamp(ix, 0, w - 1);
+            let clamped_iy = isize::clamp(iy, 0, w - 1);
 
-        return Err((val1, val2));
-    };
+            let val1 = Self::new((clamped_ix, iy), width, side).unwrap();
+            let val2 = Self::new((ix, clamped_iy), width, side).unwrap();
 
-    Ok(((new_ix as usize, new_iy as usize), new_side))
+            return Err((val1, val2));
+        };
+
+        Ok(Self {
+            ix: new_ix as usize,
+            iy: new_iy as usize,
+            side: new_side,
+        })
+    }
 }
 
 fn sample_height(i: (isize, isize), width: usize, side: Side, sides: &[ProtoSide]) -> f32 {
-    match remap_index_over_edge(i, width, side) {
-        Ok(((ix, iy), side)) => {
+    match RemappedIndex::new(i, width, side) {
+        Ok(RemappedIndex { ix, iy, side }) => {
             let side_index = side.to_index();
             let h = sides[side_index].height_map.borrow().get(ix, iy);
             h.height
         }
-        Err((((lix, liy), lside), ((rix, riy), rside))) => {
+        Err((
+            RemappedIndex {
+                ix: lix,
+                iy: liy,
+                side: lside,
+            },
+            RemappedIndex {
+                ix: rix,
+                iy: riy,
+                side: rside,
+            },
+        )) => {
             let lside_index = lside.to_index();
             let lh = sides[lside_index].height_map.borrow().get(lix, liy);
             let lval = lh.height;
@@ -1563,7 +1613,12 @@ fn calculate_gradient_and_height(
     let x = pos.x() - coord_x as f32;
     let y = pos.y() - coord_y as f32;
 
-    let (onw, one, osw, ose) = eko.get_offsets();
+    let ErosionKernelOriginOffsets {
+        nw: onw,
+        ne: one,
+        sw: osw,
+        se: ose,
+    } = eko.get_offsets();
 
     let inw = (coord_x + onw.0, coord_y + onw.1);
     let ine = (coord_x + one.0, coord_y + one.1);
@@ -1591,8 +1646,8 @@ fn deposit_sediment(
     sides: &[ProtoSide],
     sediment: f32,
 ) {
-    match remap_index_over_edge(ipos, width, side) {
-        Ok(((ix, iy), side)) => {
+    match RemappedIndex::new(ipos, width, side) {
+        Ok(RemappedIndex { ix, iy, side }) => {
             let side_index = side.to_index();
             let mut h = sides[side_index].height_map.borrow().get(ix, iy);
             h.height += sediment;
@@ -1601,7 +1656,18 @@ fn deposit_sediment(
             let mut height_map = height_map.borrow_mut();
             height_map.set(ix, iy, h);
         }
-        Err((((lix, liy), lside), ((rix, riy), rside))) => {
+        Err((
+            RemappedIndex {
+                ix: lix,
+                iy: liy,
+                side: lside,
+            },
+            RemappedIndex {
+                ix: rix,
+                iy: riy,
+                side: rside,
+            },
+        )) => {
             let li = (lix as isize, liy as isize);
             let ri = (rix as isize, riy as isize);
 

@@ -148,8 +148,7 @@ fn save_as_qoi_preview<'a>(
     if width % preview_width != 0 {
         Err(StringError(format!(
             "preview_width {} must be a divisor of width {} for the downsampling to work correctly",
-            preview_width,
-            width,
+            preview_width, width,
         )))?;
     }
 
@@ -212,7 +211,7 @@ fn save_as_qoi_preview<'a>(
     save_file("preview.qoi", qoi_bytes)
 }
 
-fn colored_height_gradient() -> Result<Gradient<OkLab, 3>, Box<dyn std::error::Error>>{
+fn colored_height_gradient() -> Result<Gradient<OkLab, 3>, Box<dyn std::error::Error>> {
     let gradient = Gradient::try_from([
         OkLab::from(Rgb::from_hex("#00008a")?),
         OkLab::from(Rgb::from_hex("#1d90ff")?),
@@ -226,7 +225,10 @@ fn colored_height_gradient() -> Result<Gradient<OkLab, 3>, Box<dyn std::error::E
     Ok(gradient)
 }
 
-fn save_file(path: impl AsRef<str>, bytes: impl AsRef<[u8]>) -> Result<(), Box<dyn std::error::Error>> {
+fn save_file(
+    path: impl AsRef<str>,
+    bytes: impl AsRef<[u8]>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let path = path.as_ref();
     let bytes = bytes.as_ref();
 
