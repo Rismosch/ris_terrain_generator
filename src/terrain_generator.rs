@@ -110,6 +110,35 @@ pub struct Args {
     pub erosion_evaporate_speed: f32,
 }
 
+impl Default for Args {
+    fn default() -> Self {
+        let seed = super::rng::Seed::new();
+        let width = 1 << 8;
+
+        Self {
+            seed,
+            width,
+            continent_count: 6,
+            continental_mountain_thickness: width / 2,
+            fractal_main_layer: 2,
+            fractal_weight: 0.25,
+            erosion_kind: ErosionKind::Rng,
+            erosion_iterations: width * width * 6,
+            erosion_normalize_mod: width * width * 6,
+            erosion_max_lifetime: 10,
+            erosion_start_speed: 1.0,
+            erosion_start_water: 1.0,
+            erosion_inertia: 0.3,
+            erosion_min_sediment_capacity: 0.01,
+            erosion_sediment_capacity_factor: 3.0,
+            erosion_erode_speed: 0.003,
+            erosion_deposit_speed: 0.003,
+            erosion_gravity: 4.0,
+            erosion_evaporate_speed: 0.01,
+        }
+    }
+}
+
 pub struct HeightMap {
     pub values: Vec<f32>,
     pub side: Side,
@@ -120,7 +149,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         seed,
         width,
         continent_count,
-        //kernel_radius,
         continental_mountain_thickness,
         fractal_main_layer,
         fractal_weight,
