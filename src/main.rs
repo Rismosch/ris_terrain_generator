@@ -27,9 +27,9 @@ use crate::terrain_generator::Side;
 
 fn main() {
     // settings
-    let seed = Seed::default();
+    let seed = Seed::new();
     let width = 1 << 8;
-    let preview_width = width;
+    let preview_width = 1 << 8; // for the preview to be useful, keep this quite small
 
     let args = Args {
         seed,
@@ -58,15 +58,15 @@ fn main() {
 
     // use heightmap as desired
     if let Err(e) = save_as_bin(&result) {
-        eprintln!("failed to safe bin: {}", e);
+        eprintln!("failed to save bin: {}", e);
     }
 
     if let Err(e) = save_as_qoi(width, &result) {
-        eprintln!("failed to safe qoi: {}", e);
+        eprintln!("failed to save qoi: {}", e);
     }
 
     if let Err(e) = save_as_qoi_preview(width, preview_width, &result) {
-        eprintln!("failed to safe qoi preview: {}", e);
+        eprintln!("failed to save preview: {}", e);
     }
 
     eprintln!("done! seed: {:?}", seed);
@@ -79,18 +79,15 @@ fn save_as_bin<'a>(
         let HeightMap { values, side } = height_map;
         eprintln!("serializing bin... {}/6", i + 1);
 
-        let path_string = format!("height_map_{}.bin", side);
-        let filepath = PathBuf::from(path_string);
+        let data_len = values.len() * 4;
+        let mut data = std::io::Cursor::new(Vec::with_capacity(data_len));
 
-        if filepath.exists() {
-            std::fs::remove_file(&filepath)?;
-        }
-
-        let mut file = std::fs::File::create_new(filepath)?;
-        let f = &mut file;
         for v in values {
-            crate::io::write_f32(f, *v)?;
+            crate::io::write_f32(&mut data, *v)?;
         }
+
+        let bytes = data.into_inner();
+        save_file(format!("height_map_{}.bin", side), bytes)?;
     }
 
     Ok(())
@@ -124,17 +121,7 @@ fn save_as_qoi<'a>(
             color_space: ColorSpace::SRGB,
         };
         let qoi_bytes = qoi::encode(&bytes, desc)?;
-
-        let path_string = format!("height_map_{}.qoi", side);
-        let filepath = PathBuf::from(path_string);
-
-        if filepath.exists() {
-            std::fs::remove_file(&filepath)?;
-        }
-
-        let mut file = std::fs::File::create_new(filepath)?;
-        let f = &mut file;
-        crate::io::write(f, &qoi_bytes)?;
+        save_file(format!("height_map_{}.qoi", side), qoi_bytes)?;
     }
 
     Ok(())
@@ -222,17 +209,7 @@ fn save_as_qoi_preview<'a>(
     }
 
     let qoi_bytes = qoi::encode(&data, desc)?;
-
-    let filepath = PathBuf::from("preview.qoi");
-    if filepath.exists() {
-        std::fs::remove_file(&filepath)?;
-    }
-
-    let mut file = std::fs::File::create_new(filepath)?;
-    let f = &mut file;
-    crate::io::write(f, &qoi_bytes)?;
-
-    Ok(())
+    save_file("preview.qoi", qoi_bytes)
 }
 
 fn colored_height_gradient() -> Result<Gradient<OkLab, 3>, Box<dyn std::error::Error>>{
@@ -247,4 +224,20 @@ fn colored_height_gradient() -> Result<Gradient<OkLab, 3>, Box<dyn std::error::E
     ])?;
 
     Ok(gradient)
+}
+
+fn save_file(path: impl AsRef<str>, bytes: impl AsRef<[u8]>) -> Result<(), Box<dyn std::error::Error>> {
+    let path = path.as_ref();
+    let bytes = bytes.as_ref();
+
+    let filepath = PathBuf::from(path);
+    if filepath.exists() {
+        std::fs::remove_file(&filepath)?;
+    }
+
+    let mut file = std::fs::File::create_new(filepath)?;
+    let f = &mut file;
+    crate::io::write(f, bytes)?;
+
+    Ok(())
 }

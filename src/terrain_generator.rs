@@ -256,7 +256,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     let mut continents = vec![Continent::default(); continent_count];
 
     // continents
-    eprintln!("determine continent starting positions...");
+    eprintln!("[1/8] determine continent starting positions...");
     let mut starting_positions = Vec::<ContinentPixel>::with_capacity(continent_count);
 
     for _ in 0..starting_positions.capacity() {
@@ -315,8 +315,8 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 h.continent_index = continent_index;
                 if discovered_pixel_count % 1000000 == 0 {
                     let total = width * width * 6;
-                    let percentage = discovered_pixel_count as f32 / total as f32;
-                    eprintln!("generate continents... {}", percentage);
+                    let progress = (discovered_pixel_count as f32 / total as f32) * 100.0;
+                    eprintln!("[1/8] generate continents... {}%", progress);
                 }
                 discovered_pixel_count += 1;
 
@@ -535,16 +535,20 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     }
 
     // find edges
-    eprintln!("find continent edges...");
-
     let mut unchecked_boundaries = Vec::new();
-    for side in sides.iter() {
+    for (i, side) in sides.iter().enumerate() {
         let ProtoSide {
             perlin_sampler: _,
             height_map,
         } = side;
 
         for iy in 0..width {
+            if iy % 1000 == 0 {
+                let total = sides.len() * width;
+                let progress = ((i * width + iy) as f32 / total as f32) * 100.0;
+                eprintln!("[2/8] find continent edges... {}%", progress);
+            }
+
             for ix in 0..width {
                 let h = height_map.borrow().get(ix, iy);
                 let continent_index_lhs = h.continent_index;
@@ -586,13 +590,14 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     // create continent boundary space
     // i.e. find for each pixel the closest neighboring continent
     // do so using a fill operation, basically a BFS originating from the edges
-    eprintln!("create continent boundary space...");
-
     let mut continent_boundary_space = Vec::with_capacity(6);
     for _ in 0..continent_boundary_space.capacity() {
         let side = vec![None; width * width];
         continent_boundary_space.push(side);
     }
+
+    let mut count = 0;
+    let total_continent_boundary_space_len = (continent_boundary_space.len() * width * width) as f32;
 
     loop {
         // discover new pixels
@@ -603,6 +608,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             if pixel.is_some() {
                 continue;
             }
+
+            if count % 1000000 == 0 {
+                let progress = (count as f32 / total_continent_boundary_space_len) * 100.0;
+                eprintln!("[3/8] create continent boundary space... {}%", progress);
+            }
+            count += 1;
 
             *pixel = Some(((ix, iy), side, generation));
 
@@ -634,9 +645,17 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     }
 
     // use continent boundary space to determine height
+    count = 0;
+
     for (side_index, side_values) in continent_boundary_space.iter().enumerate() {
         for iy in 0..width {
             for ix in 0..width {
+                if count % 1000000 == 0 {
+                    let progress = (count as f32 / total_continent_boundary_space_len) * 100.0;
+                    eprintln!("[4/8] determine continent height... {}%", progress);
+                }
+                count += 1;
+
                 let i = iy * width + ix;
                 let ((ix_, iy_), side_, generation) =
                     side_values[i].expect("all pixels to be discovered");
@@ -705,7 +724,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     normalize(&mut sides, Some(129.8125 / 255.0));
 
     // sides
-    for (i, side) in sides.iter().enumerate() {
+    let mut count = 0;
+    let layers = f32::log2(width as f32) as usize - 1;
+    let total = sides.len() * width * layers;
+
+    for side in sides.iter() {
         let ProtoSide {
             perlin_sampler,
             height_map,
@@ -729,15 +752,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
             for iy in 0..width {
                 if iy % 1000 == 0 {
+                    let process = (count as f32 / total as f32) * 100.0;
                     eprintln!(
-                        "generating noise... {} ({}/6) progress: {}/{} layer: {}",
-                        height_map.borrow().side,
-                        i,
-                        iy,
-                        width,
-                        layer,
+                        "[5/8] generating noise... {}%",
+                        process,
                     );
                 }
+                count += 1;
 
                 for ix in 0..width {
                     let coord = Vec2(ix as f32 + 0.5, iy as f32 + 0.5);
@@ -841,7 +862,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     } // end sides
 
     // normalize and apply weight to heightmap
-    eprintln!("normalize and apply weight...");
+    eprintln!("[6/8] apply weight...");
     normalize(&mut sides, None);
 
     for side in sides.iter_mut() {
@@ -863,7 +884,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     normalize(&mut sides, None);
 
     // erosion
-    eprintln!("find erosion stride...");
+    eprintln!("[7/8] find erosion stride...");
 
     let phi = (1.0 + f32::sqrt(5.0)) / 2.0; // golden ratio
     let resolution = width * width;
@@ -891,13 +912,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         offset += 1;
     };
 
-    eprintln!("stride {}, ideal: {}", stride, ideal_stride);
+    eprintln!("[7/8] stride {}, ideal: {}", stride, ideal_stride);
 
     let mut idrop = rng.next_usize();
     for i in 0..erosion_iterations {
         if i % 100_000 == 0 {
             let progress = i as f32 / erosion_iterations as f32 * 100.0;
-            eprintln!("erode... {}%", progress,);
+            eprintln!("[7/8] erode... {}%", progress,);
         }
 
         idrop = match erosion_kind {
@@ -1174,10 +1195,16 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         }
     } // erosion iterations
 
-    normalize(&mut sides, None);
 
     // prepare result
-    prepare_proto_sides(sides)
+    eprintln!("[8/8] prepare result...");
+
+    normalize(&mut sides, None);
+    let result = prepare_proto_sides(sides);
+
+    eprintln!("done with terrain generation!");
+
+    result
 }
 
 #[derive(Clone, Copy)]
