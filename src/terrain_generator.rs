@@ -80,24 +80,104 @@ impl From<usize> for Side {
     }
 }
 
+#[allow(dead_code)]
+// justification: implementation exists, and client code may
+// choose the currently un-instantiated value in the future
+pub enum ErosionKind {
+    Stride,
+    Rng,
+}
+
 pub struct Args {
+    /// a wrapper around a `u128`, which controls the RNG of the generator. the same seed will
+    /// produce the same terrain. `Seed::new()` generates a completely new and unique seed, which
+    /// in turn generates completely new terran. `Seed::default()` on the other hand returns a hard
+    /// coded, unchanging seed. Use `Seed::default()` or `Seed(<your_number>)` to generate the same
+    /// terrain again and again.
     pub seed: Seed,
+    /// the width of a single cube face. this has a small effect on the overall structure of the
+    /// terrain. it affects the continent generation, but aside from that it increases resolution.
+    /// note that the bigger the width, the longer the generation takes. at sufficiently large
+    /// widths, generation can take up minutes, maybe even hours on weak hardware.
     pub width: usize,
+    /// determines how many continents should be generated. these are used to generate very coarse
+    /// terrain features, like mountain peaks and trenches.
     pub continent_count: usize,
-    pub kernel_radius: f32,
+    /// determines the width of the continental mountains/trenches. note that the height falls of
+    /// with distance to the continental boundary, which may become smaller than the perlin noise,
+    /// thus mountains/trenches may appear to be not as wide as one might expect from this setting.
+    pub continental_mountain_thickness: usize,
+    /// the main octave of the fractal perlin noise. every other octave will be weighted less than
+    /// the main layer. the further away an octave is from the main one, the smaller its
+    /// contribution to the noise.
     pub fractal_main_layer: usize,
+    /// the weight of the total fractal perlin noise. the coarse continent terrain has a weight of
+    /// 1.
     pub fractal_weight: f32,
+    /// determines how the position of the rain droplets should be found. `ErosionKind::Stride`
+    /// produces a periodic pattern, using the golden ratio, guaranteeing that raindrops are
+    /// spawned uniformly. `ErosionKind::Rng` produces random droplets, which does not have the
+    /// uniform guarantee, but may produce more organic looking terrain.
+    pub erosion_kind: ErosionKind,
+    /// determines how many raindrops should be spawned.
     pub erosion_iterations: usize,
+    /// after `erosion_normalize_mod` steps the terrain is normalized. this is an attempt to avoid
+    /// artifacts when `erosion_iterations` is set to ridiculously high values.
+    pub erosion_normalize_mod: usize,
+    /// determines how many steps a raindrop lives at maximum, before simulating a new and
+    /// different raindrop.
     pub erosion_max_lifetime: usize,
+    /// sets the initial speed of the raindrop.
     pub erosion_start_speed: f32,
+    /// sets how much water a raindrop has initially.
     pub erosion_start_water: f32,
+    /// determines how difficult it is to change the direction the droplet is moving in. this means
+    /// a droplet may not always flow down the steepest slope, but may overshoot and land somewhere
+    /// else.
     pub erosion_inertia: f32,
+    /// determines the minimum amount of material a raindrop can hold.
     pub erosion_min_sediment_capacity: f32,
+    /// has an effect on how much material a raindrop can hold. if a raindrop exceeds this factor,
+    /// it will deposit material while flowing.
     pub erosion_sediment_capacity_factor: f32,
+    /// has a direct effect on how much material is removed from the terrain.
     pub erosion_erode_speed: f32,
+    /// has a direct effect on how much material the raindrop loses when depositing back to the
+    /// terrain. for example when the raindrop evaporates, it will leave material behind.
     pub erosion_deposit_speed: f32,
+    /// determines how fast the droplet accelerates downwards.
     pub erosion_gravity: f32,
+    /// sets how much water the raindrop loses after each step.
     pub erosion_evaporate_speed: f32,
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        let seed = super::rng::Seed::default();
+        let width = 1 << 8;
+
+        Self {
+            seed,
+            width,
+            continent_count: 6,
+            continental_mountain_thickness: width / 2,
+            fractal_main_layer: 2,
+            fractal_weight: 0.25,
+            erosion_kind: ErosionKind::Rng,
+            erosion_iterations: width * width * 6,
+            erosion_normalize_mod: width * width * 6,
+            erosion_max_lifetime: 10,
+            erosion_start_speed: 1.0,
+            erosion_start_water: 1.0,
+            erosion_inertia: 0.3,
+            erosion_min_sediment_capacity: 0.01,
+            erosion_sediment_capacity_factor: 3.0,
+            erosion_erode_speed: 0.003,
+            erosion_deposit_speed: 0.003,
+            erosion_gravity: 4.0,
+            erosion_evaporate_speed: 0.01,
+        }
+    }
 }
 
 pub struct HeightMap {
@@ -110,10 +190,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         seed,
         width,
         continent_count,
-        kernel_radius,
+        continental_mountain_thickness,
         fractal_main_layer,
         fractal_weight,
+        erosion_kind,
         erosion_iterations,
+        erosion_normalize_mod,
         erosion_max_lifetime,
         erosion_start_speed,
         erosion_start_water,
@@ -128,7 +210,6 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
     eprintln!("seed: {:?}", seed);
     let mut rng = Rng::new(seed);
-    let kernel_radius = kernel_radius as isize;
 
     eprintln!("resolution: {}x{}", width, width);
 
@@ -216,7 +297,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     let mut continents = vec![Continent::default(); continent_count];
 
     // continents
-    eprintln!("determine continent starting positions...");
+    eprintln!("[1/8] determine continent starting positions...");
     let mut starting_positions = Vec::<ContinentPixel>::with_capacity(continent_count);
 
     for _ in 0..starting_positions.capacity() {
@@ -229,7 +310,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
 
             let candidate = ContinentPixel { side, ix, iy };
 
-            let candidate_exists = starting_positions.iter().any(|x| *x == candidate);
+            let candidate_exists = starting_positions.contains(&candidate);
             if candidate_exists {
                 continue;
             }
@@ -273,13 +354,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 new_pixel_was_discovered = true;
 
                 h.continent_index = continent_index;
-                discovered_pixel_count += 1;
-
                 if discovered_pixel_count % 1000000 == 0 {
                     let total = width * width * 6;
-                    let percentage = discovered_pixel_count as f32 / total as f32;
-                    eprintln!("generate continents... {}", percentage);
+                    let progress = (discovered_pixel_count as f32 / total as f32) * 100.0;
+                    eprintln!("[1/8] generate continents... {}%", progress);
                 }
+                discovered_pixel_count += 1;
 
                 side.height_map
                     .borrow_mut()
@@ -495,219 +575,214 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         }
     }
 
-    // generate kernel
-    eprintln!("generate kernel");
-    let mut kernel = Vec::new();
-
-    for iy in -kernel_radius..=kernel_radius {
-        for ix in -kernel_radius..=kernel_radius {
-            let x = ix as f32;
-            let y = iy as f32;
-            let d = f32::sqrt(x * x + y * y);
-            if d < kernel_radius as f32 {
-                kernel.push(((ix, iy), d));
-            }
-        }
-    }
-
-    kernel.sort_by(|l, r| l.1.total_cmp(&r.1));
-
-    // calculate heights on continent boundaries
-    eprintln!(
-        "calculate height based on plate boundaries... {}",
-        discovered_pixel_count
-    );
-
-    let mut min_continent = f32::MAX;
-    let mut max_continent = f32::MIN;
-
-    for side in sides.iter() {
+    // find edges
+    let mut unchecked_boundaries = Vec::new();
+    for (i, side) in sides.iter().enumerate() {
         let ProtoSide {
             perlin_sampler: _,
             height_map,
         } = side;
 
         for iy in 0..width {
-            if iy % 5 == 0 {
-                eprintln!(
-                    "finding plate boundaries {}... progress: {}/{}",
-                    height_map.borrow().side,
-                    iy,
-                    width,
-                );
+            if iy % 1000 == 0 {
+                let total = sides.len() * width;
+                let progress = ((i * width + iy) as f32 / total as f32) * 100.0;
+                eprintln!("[2/8] find continent edges... {}%", progress);
             }
 
             for ix in 0..width {
                 let h = height_map.borrow().get(ix, iy);
                 let continent_index_lhs = h.continent_index;
-                let continent = &continents[continent_index_lhs];
 
-                for &((kx, ky), kd) in kernel.iter() {
-                    if kx == 0 && ky == 0 {
-                        continue;
-                    }
+                let mut offsets = vec![(1, 0), (-1, 0), (0, 1), (0, -1)];
 
-                    let ix_ = ix as isize + kx;
-                    let iy_ = iy as isize + ky;
-                    let side_ = height_map.borrow().side;
+                for _ in 0..offsets.len() {
+                    // shuffle offsets
+                    let min = 0;
+                    let max = (offsets.len() - 1) as i32;
+                    let i = rng.next_i32_between(min, max) as usize;
+                    let offset = offsets.swap_remove(i);
 
-                    let w = width as isize;
-
-                    let falls_on_left = ix_ < 0;
-                    let falls_on_right = ix_ >= w;
-                    let falls_on_upper = iy_ < 0;
-                    let falls_on_lower = iy_ >= w;
-
-                    let falls_on_upper_left = falls_on_upper && falls_on_left;
-                    let falls_on_upper_right = falls_on_upper && falls_on_right;
-                    let falls_on_lower_left = falls_on_lower && falls_on_left;
-                    let falls_on_lower_right = falls_on_lower && falls_on_right;
-
-                    let falls_on_corner = falls_on_upper_left
-                        || falls_on_upper_right
-                        || falls_on_lower_left
-                        || falls_on_lower_right;
-
-                    if falls_on_corner {
-                        continue;
-                    }
-
-                    // map ix_ and iy_ onto correct side
-                    let (ix_, iy_, mapped_side_) = if falls_on_left {
-                        let d = ix as isize + 1;
-                        // kx is negative, negate to make math more intuitive
-                        let kx = -kx;
-                        match side_ {
-                            Side::L => (w - 1 - kx + d, iy_, Side::F),
-                            Side::B => (w - 1 - kx + d, iy_, Side::L),
-                            Side::R => (w - 1 - kx + d, iy_, Side::B),
-                            Side::F => (w - 1 - kx + d, iy_, Side::R),
-                            Side::U => (iy_, kx - d, Side::L),
-                            Side::D => (w - 1 - iy_, w - 1 - kx + d, Side::L),
-                        }
-                    } else if falls_on_right {
-                        let d = width as isize - ix as isize;
-                        match side_ {
-                            Side::L => (kx - d, iy_, Side::B),
-                            Side::B => (kx - d, iy_, Side::R),
-                            Side::R => (kx - d, iy_, Side::F),
-                            Side::F => (kx - d, iy_, Side::L),
-                            Side::U => (w - 1 - iy_, kx - d, Side::R),
-                            Side::D => (iy_, w - 1 - kx + d, Side::R),
-                        }
-                    } else if falls_on_upper {
-                        let d = iy as isize + 1;
-                        // ky is negative, negate to make math more intuitive
-                        let ky = -ky;
-                        match side_ {
-                            Side::L => (ky - d, ix_, Side::U),
-                            Side::B => (ix_, w - 1 - ky + d, Side::U),
-                            Side::R => (w - 1 - ky + d, w - 1 - ix_, Side::U),
-                            Side::F => (w - 1 - ix_, ky - d, Side::U),
-                            Side::U => (w - 1 - ix_, ky - d, Side::F),
-                            Side::D => (ix_, w - 1 - ky + d, Side::B),
-                        }
-                    } else if falls_on_lower {
-                        let d = width as isize - iy as isize;
-                        match side_ {
-                            Side::L => (ky - d, w - 1 - ix_, Side::D),
-                            Side::B => (ix_, ky - d, Side::D),
-                            Side::R => (w - 1 - ky + d, ix_, Side::D),
-                            Side::F => (w - 1 - ix_, w - 1 - ky + d, Side::D),
-                            Side::U => (ix_, ky - d, Side::B),
-                            Side::D => (w - 1 - ix_, w - 1 - ky + d, Side::F),
-                        }
-                    } else {
-                        (ix_, iy_, side_)
-                    };
-
-                    let ix_ = ix_ as usize;
-                    let iy_ = iy_ as usize;
-
-                    let height_map_ = &sides
-                        .iter()
-                        .find(|x| x.height_map.borrow().side == mapped_side_)
-                        .expect("height map to exist")
-                        .height_map;
-                    let Some(h_) = height_map_.borrow().try_get(ix_, iy_) else {
-                        println!("after map 1: {} {} {} {}", width, side_, ix_, iy_);
-                        println!("after map 2: {} {} {} {}", kx, ky, ix, iy);
-                        panic!();
-                    };
-
-                    if h.continent_index == h_.continent_index {
-                        continue;
-                    }
-
-                    // boundary found, calculate height
-                    let continent_ = &continents[h_.continent_index];
-
-                    let angle = 2.0 * PI / (4 * width) as f32;
-                    let q = Quat::angle_axis(angle, continent.rotation_axis);
-                    let q_ = Quat::angle_axis(angle, continent_.rotation_axis);
-
-                    let p = position_on_sphere((ix, iy), width, height_map.borrow().side);
-                    let p_ = position_on_sphere((ix_, iy_), width, height_map_.borrow().side);
-
-                    let v = (q.rotate(p) - p).normalize();
-                    let v_ = (q_.rotate(p_) - p_).normalize();
-
-                    let origin_pixel = continent.origin.clone();
-
-                    let o = position_on_sphere(
-                        (origin_pixel.ix, origin_pixel.iy),
+                    let RemappedIndex {
+                        ix: ix_,
+                        iy: iy_,
+                        side: side_,
+                    } = RemappedIndex::new(
+                        (ix as isize + offset.0, iy as isize + offset.1),
                         width,
-                        origin_pixel.side,
-                    );
-                    let d = p - o;
-                    let d_ = p_ - o;
+                        side.height_map.borrow().side,
+                    )
+                    .expect("offsets to not go over corners, only edges");
 
-                    // formular for smoother, but in my opinion
-                    // less interesting terrain:
-                    // let m = (p * p_) / 2.0;
-                    // let d = p - m;
-                    // let d_ = m - p_;
+                    let h_ = sides[side_.to_index()].height_map.borrow().get(ix_, iy_);
+                    let continent_index_rhs = h_.continent_index;
 
-                    let dot = Vec3::dot(v.normalize(), d.normalize());
-                    let dot_ = Vec3::dot(v_.normalize(), d_.normalize());
-
-                    let boundary_height = match (dot.is_sign_positive(), dot_.is_sign_positive()) {
-                        (false, false) => dot * dot_,
-                        (true, false) => dot * dot_ * -1.0,
-                        (false, true) => dot * dot_,
-                        (true, true) => dot * dot_,
-                    };
-
-                    // https://www.desmos.com/calculator/2oekg4vn5i
-                    let a = (kd.abs() / kernel_radius as f32) - 1.0;
-                    let weight = 1.0 - f32::sqrt(1.0 - a * a);
-
-                    let mut h = height_map.borrow().get(ix, iy);
-                    h.height += weight * boundary_height;
-                    height_map.borrow_mut().set(ix, iy, h);
-
-                    min_continent = f32::min(min_continent, h.height);
-                    max_continent = f32::max(max_continent, h.height);
-
-                    break;
+                    if continent_index_lhs != continent_index_rhs {
+                        // edge found!
+                        unchecked_boundaries.push((
+                            (ix, iy),
+                            height_map.borrow().side,
+                            continent_index_rhs,
+                            0,
+                        ));
+                        break;
+                    }
                 }
+            }
+        }
+    } // find edges
+
+    // create continent boundary space
+    // i.e. find for each pixel the closest neighboring continent
+    // do so using a fill operation, basically a BFS originating from the edges
+    let mut continent_boundary_space = Vec::with_capacity(6);
+    for _ in 0..continent_boundary_space.capacity() {
+        let side = vec![None; width * width];
+        continent_boundary_space.push(side);
+    }
+
+    let mut count = 0;
+    let total_continent_boundary_space_len =
+        (continent_boundary_space.len() * width * width) as f32;
+
+    loop {
+        // discover new pixels
+        let mut new_unchecked_boundaries = Vec::new();
+
+        for ((ix, iy), side, continent_index, generation) in unchecked_boundaries.into_iter() {
+            let pixel = &mut continent_boundary_space[side.to_index()][iy * width + ix];
+            if pixel.is_some() {
+                continue;
+            }
+
+            if count % 1000000 == 0 {
+                let progress = (count as f32 / total_continent_boundary_space_len) * 100.0;
+                eprintln!("[3/8] create continent boundary space... {}%", progress);
+            }
+            count += 1;
+
+            *pixel = Some(((ix, iy), side, generation));
+
+            let mut offsets = vec![(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+            for _ in 0..offsets.len() {
+                // shuffle offsets
+                let min = 0;
+                let max = (offsets.len() - 1) as i32;
+                let i = rng.next_i32_between(min, max) as usize;
+                let offset = offsets.swap_remove(i);
+
+                let RemappedIndex {
+                    ix: ix_,
+                    iy: iy_,
+                    side: side_,
+                } = RemappedIndex::new(
+                    (ix as isize + offset.0, iy as isize + offset.1),
+                    width,
+                    side,
+                )
+                .expect("offsets to not go over corners, only edges");
+
+                new_unchecked_boundaries.push(((ix_, iy_), side_, continent_index, generation + 1));
+            }
+        }
+
+        if new_unchecked_boundaries.is_empty() {
+            break;
+        }
+
+        unchecked_boundaries = new_unchecked_boundaries;
+    }
+
+    // use continent boundary space to determine height
+    count = 0;
+
+    for (side_index, side_values) in continent_boundary_space.iter().enumerate() {
+        for iy in 0..width {
+            for ix in 0..width {
+                if count % 1000000 == 0 {
+                    let progress = (count as f32 / total_continent_boundary_space_len) * 100.0;
+                    eprintln!("[4/8] determine continent height... {}%", progress);
+                }
+                count += 1;
+
+                let i = iy * width + ix;
+                let ((ix_, iy_), side_, generation) =
+                    side_values[i].expect("all pixels to be discovered");
+
+                if generation > continental_mountain_thickness {
+                    continue;
+                }
+
+                // prepare
+                let height_map = &sides[side_index].height_map;
+                let height_map_ = &sides[side_.to_index()].height_map;
+                let mut h = height_map.borrow().get(ix, iy);
+                let h_ = height_map_.borrow().get(ix_, iy_);
+
+                let continent = &continents[h.continent_index];
+                let continent_ = &continents[h_.continent_index];
+
+                // calculate boundary height
+                let angle = 2.0 * PI / (4 * width) as f32;
+                let q = Quat::angle_axis(angle, continent.rotation_axis);
+                let q_ = Quat::angle_axis(angle, continent_.rotation_axis);
+
+                let p = position_on_sphere((ix, iy), width, height_map.borrow().side);
+                let p_ = position_on_sphere((ix_, iy_), width, height_map_.borrow().side);
+
+                let v = (q.rotate(p) - p).normalize();
+                let v_ = (q_.rotate(p_) - p_).normalize();
+
+                let origin_pixel = continent.origin.clone();
+
+                let o = position_on_sphere(
+                    (origin_pixel.ix, origin_pixel.iy),
+                    width,
+                    origin_pixel.side,
+                );
+                let d = p - o;
+                let d_ = p_ - o;
+
+                // formular for smoother, but in my opinion
+                // less interesting terrain:
+                // let m = (p * p_) / 2.0;
+                // let d = p - m;
+                // let d_ = m - p_;
+
+                let dot = Vec3::dot(v.normalize(), d.normalize());
+                let dot_ = Vec3::dot(v_.normalize(), d_.normalize());
+
+                let boundary_height = match (dot.is_sign_positive(), dot_.is_sign_positive()) {
+                    (false, false) => -(dot * dot_),
+                    (true, false) => -(dot * dot_),
+                    (false, true) => -(dot * dot_),
+                    (true, true) => dot * dot_,
+                };
+
+                // https://www.desmos.com/calculator/4p8se0qln8
+                let m = continental_mountain_thickness as f32;
+                let x = -m + generation as f32;
+                let weight = (x * x) / (m * m);
+
+                h.height = boundary_height * weight;
+                height_map.borrow_mut().set(ix, iy, h);
             }
         }
     }
 
-    eprintln!("continent min: {}, max: {}", min_continent, max_continent);
-
-    // continents end
     normalize(&mut sides, Some(129.8125 / 255.0));
 
     // sides
-    for (i, side) in sides.iter().enumerate() {
+    let mut count = 0;
+    let layers = f32::log2(width as f32) as usize - 1;
+    let total = sides.len() * width * layers;
+
+    for side in sides.iter() {
         let ProtoSide {
             perlin_sampler,
             height_map,
         } = side;
-
-        eprintln!("generating side... {} ({})", height_map.borrow().side, i);
 
         let mut layer = 0;
         loop {
@@ -726,16 +801,11 @@ pub fn run(args: Args) -> Vec<HeightMap> {
             }
 
             for iy in 0..width {
-                if iy % 100 == 0 {
-                    eprintln!(
-                        "generating side {} ({})... progress: {}/{} layer: {}",
-                        height_map.borrow().side,
-                        i,
-                        iy,
-                        width,
-                        layer,
-                    );
+                if iy % 1000 == 0 {
+                    let process = (count as f32 / total as f32) * 100.0;
+                    eprintln!("[5/8] generating noise... {}%", process,);
                 }
+                count += 1;
 
                 for ix in 0..width {
                     let coord = Vec2(ix as f32 + 0.5, iy as f32 + 0.5);
@@ -839,12 +909,13 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     } // end sides
 
     // normalize and apply weight to heightmap
-    eprintln!("normalize and apply weight...");
+    eprintln!("[6/8] apply weight...");
     normalize(&mut sides, None);
 
     for side in sides.iter_mut() {
         for h in side.height_map.borrow_mut().values.iter_mut() {
             //// sigmoid
+            //https://www.desmos.com/calculator/er6jzcri6d
             //let steepness = 10.0;
             //let center = 0.5;
             //*h = 1.0 / (1.0 + f32::exp(-steepness * (*h - center)));
@@ -860,7 +931,7 @@ pub fn run(args: Args) -> Vec<HeightMap> {
     normalize(&mut sides, None);
 
     // erosion
-    eprintln!("find erosion stride...");
+    eprintln!("[7/8] find erosion stride...");
 
     let phi = (1.0 + f32::sqrt(5.0)) / 2.0; // golden ratio
     let resolution = width * width;
@@ -888,17 +959,19 @@ pub fn run(args: Args) -> Vec<HeightMap> {
         offset += 1;
     };
 
-    eprintln!("stride {}, ideal: {}", stride, ideal_stride);
+    eprintln!("[7/8] stride {}, ideal: {}", stride, ideal_stride);
 
     let mut idrop = rng.next_usize();
-    let iterations = erosion_iterations * modulo;
-    for i in 0..iterations {
-        if i % 10_000 == 0 {
-            let progress = i as f32 / iterations as f32 * 100.0;
-            eprintln!("erode... {}%", progress,);
+    for i in 0..erosion_iterations {
+        if i % 100_000 == 0 {
+            let progress = i as f32 / erosion_iterations as f32 * 100.0;
+            eprintln!("[7/8] erode... {}%", progress,);
         }
 
-        idrop = idrop.wrapping_add(stride) % modulo;
+        idrop = match erosion_kind {
+            ErosionKind::Stride => idrop.wrapping_add(stride) % modulo,
+            ErosionKind::Rng => rng.next_i32_between(0, modulo as i32 - 1) as usize,
+        };
 
         let side = idrop / resolution;
         let mut side = sides[side].height_map.borrow().side;
@@ -1119,7 +1192,12 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 let deposit_se = amount_to_deposit * weight_se;
 
                 let i = (pos.0 as isize, pos.1 as isize);
-                let (onw, one, osw, ose) = eko.get_offsets();
+                let ErosionKernelOriginOffsets {
+                    nw: onw,
+                    ne: one,
+                    sw: osw,
+                    se: ose,
+                } = eko.get_offsets();
                 let inw = (i.0 + onw.0, i.1 + onw.1);
                 let ine = (i.0 + one.0, i.1 + one.1);
                 let isw = (i.0 + osw.0, i.1 + osw.1);
@@ -1162,27 +1240,20 @@ pub fn run(args: Args) -> Vec<HeightMap> {
                 speed * speed + delta_height * erosion_gravity,
             ));
             water *= 1.0 - erosion_evaporate_speed;
-        }
-    }
+        } // erosion max lifetime
 
-    normalize(&mut sides, None);
+        if i % erosion_normalize_mod == 0 {
+            normalize(&mut sides, None);
+        }
+    } // erosion iterations
 
     // prepare result
-    let mut result = Vec::new();
-    for side in sides.into_iter() {
-        let height_map = side.height_map.borrow();
+    eprintln!("[8/8] prepare result...");
 
-        let values = height_map
-            .values
-            .iter()
-            .map(|x| x.height)
-            .collect::<Vec<_>>();
-        let side = height_map.side;
+    normalize(&mut sides, None);
+    let result = prepare_proto_sides(sides);
 
-        let height_map = HeightMap { values, side };
-
-        result.push(height_map);
-    }
+    eprintln!("done with terrain generation!");
 
     result
 }
@@ -1216,11 +1287,6 @@ impl ProtoHeightMap {
     fn get(&self, x: usize, y: usize) -> ProtoHeightMapValue {
         let i = self.index(x, y);
         self.values[i]
-    }
-
-    fn try_get(&self, x: usize, y: usize) -> Option<ProtoHeightMapValue> {
-        let i = x.checked_add(y.checked_mul(self.width)?)?;
-        self.values.get(i).cloned()
     }
 
     fn set(&mut self, x: usize, y: usize, value: ProtoHeightMapValue) {
@@ -1263,13 +1329,20 @@ struct Continent {
 }
 
 // erosion samples 4 cells at different steps. when the droplet goes over a cube edge, the kernel
-// may be rotated, and thus changing the "origin cell" that the droplet may find itself in.
+// may be rotated, and thus changing the "origin" that the droplet may find itself in.
 #[derive(Debug, Clone, Copy)]
 enum ErosionKernelOrigin {
     NW,
     NE,
     SW,
     SE,
+}
+
+struct ErosionKernelOriginOffsets {
+    nw: (isize, isize),
+    ne: (isize, isize),
+    sw: (isize, isize),
+    se: (isize, isize),
 }
 
 impl Default for ErosionKernelOrigin {
@@ -1303,19 +1376,32 @@ impl ErosionKernelOrigin {
     }
 
     // returns offsets for (nw, ne, sw, se)
-    fn get_offsets(
-        self,
-    ) -> (
-        (isize, isize),
-        (isize, isize),
-        (isize, isize),
-        (isize, isize),
-    ) {
+    fn get_offsets(self) -> ErosionKernelOriginOffsets {
         match self {
-            ErosionKernelOrigin::NW => ((0, 0), (1, 0), (0, 1), (1, 1)),
-            ErosionKernelOrigin::NE => ((-1, 0), (0, 0), (-1, 1), (0, 1)),
-            ErosionKernelOrigin::SW => ((0, -1), (1, -1), (0, 0), (1, 0)),
-            ErosionKernelOrigin::SE => ((-1, -1), (0, -1), (-1, 0), (0, 0)),
+            ErosionKernelOrigin::NW => ErosionKernelOriginOffsets {
+                nw: (0, 0),
+                ne: (1, 0),
+                sw: (0, 1),
+                se: (1, 1),
+            },
+            ErosionKernelOrigin::NE => ErosionKernelOriginOffsets {
+                nw: (-1, 0),
+                ne: (0, 0),
+                sw: (-1, 1),
+                se: (0, 1),
+            },
+            ErosionKernelOrigin::SW => ErosionKernelOriginOffsets {
+                nw: (0, -1),
+                ne: (1, -1),
+                sw: (0, 0),
+                se: (1, 0),
+            },
+            ErosionKernelOrigin::SE => ErosionKernelOriginOffsets {
+                nw: (-1, -1),
+                ne: (0, -1),
+                sw: (-1, 0),
+                se: (0, 0),
+            },
         }
     }
 }
@@ -1404,83 +1490,103 @@ fn gcd(mut a: usize, mut b: usize) -> usize {
     a
 }
 
-fn remap_erosion_index(
-    i: (isize, isize),
-    width: usize,
+#[derive(Debug)]
+struct RemappedIndex {
+    ix: usize,
+    iy: usize,
     side: Side,
-) -> Result<((usize, usize), Side), (((usize, usize), Side), ((usize, usize), Side))> {
-    let (ix, iy) = i;
-    let w = width as isize;
+}
 
-    let ((new_ix, new_iy), new_side) = if ix >= 0 && ix < w && iy >= 0 && iy < w {
-        // x and y are in range, nothing needs to be wrapped
-        (i, side)
-    } else if ix < 0 && iy >= 0 && iy < w {
-        // x is too small, y is in range
-        // move left
-        match side {
-            Side::L => ((w + ix, iy), Side::F),
-            Side::B => ((w + ix, iy), Side::L),
-            Side::R => ((w + ix, iy), Side::B),
-            Side::F => ((w + ix, iy), Side::R),
-            Side::U => ((iy, -ix - 1), Side::L),
-            Side::D => ((w - iy - 1, w + ix), Side::L),
-        }
-    } else if ix >= w && iy >= 0 && iy < w {
-        // x is too large, y is in range
-        // move right
-        match side {
-            Side::L => ((ix - w, iy), Side::B),
-            Side::B => ((ix - w, iy), Side::R),
-            Side::R => ((ix - w, iy), Side::F),
-            Side::F => ((ix - w, iy), Side::L),
-            Side::U => ((w - iy - 1, ix - w), Side::R),
-            Side::D => ((iy, 2 * w - ix - 1), Side::R),
-        }
-    } else if ix >= 0 && ix < w && iy < 0 {
-        // x is in range, y is too small
-        // move up
-        match side {
-            Side::L => ((-iy - 1, ix), Side::U),
-            Side::B => ((ix, w + iy), Side::U),
-            Side::R => ((w + iy, w - ix - 1), Side::U),
-            Side::F => ((w - ix - 1, -iy - 1), Side::U),
-            Side::U => ((w - ix - 1, -iy - 1), Side::F),
-            Side::D => ((ix, w + iy), Side::B),
-        }
-    } else if ix >= 0 && ix < w && iy >= w {
-        // x is in range, y is too large
-        // move down
-        match side {
-            Side::L => ((iy - w, w - ix - 1), Side::D),
-            Side::B => ((ix, iy - w), Side::D),
-            Side::R => ((2 * w - iy - 1, ix), Side::D),
-            Side::F => ((w - ix - 1, 2 * w - iy - 1), Side::D),
-            Side::U => ((ix, iy - w), Side::B),
-            Side::D => ((w - ix - 1, 2 * w - iy - 1), Side::F),
-        }
-    } else {
-        // neither is in range. client must wrap x and y themself
-        let clamped_ix = isize::clamp(ix, 0, w - 1);
-        let clamped_iy = isize::clamp(iy, 0, w - 1);
+impl RemappedIndex {
+    fn new(i: (isize, isize), width: usize, side: Side) -> Result<Self, (Self, Self)> {
+        let (ix, iy) = i;
+        let w = width as isize;
 
-        let val1 = remap_erosion_index((clamped_ix, iy), width, side).unwrap();
-        let val2 = remap_erosion_index((ix, clamped_iy), width, side).unwrap();
+        let ((new_ix, new_iy), new_side) = if ix >= 0 && ix < w && iy >= 0 && iy < w {
+            // x and y are in range, nothing needs to be wrapped
+            (i, side)
+        } else if ix < 0 && iy >= 0 && iy < w {
+            // x is too small, y is in range
+            // move left
+            match side {
+                Side::L => ((w + ix, iy), Side::F),
+                Side::B => ((w + ix, iy), Side::L),
+                Side::R => ((w + ix, iy), Side::B),
+                Side::F => ((w + ix, iy), Side::R),
+                Side::U => ((iy, -ix - 1), Side::L),
+                Side::D => ((w - iy - 1, w + ix), Side::L),
+            }
+        } else if ix >= w && iy >= 0 && iy < w {
+            // x is too large, y is in range
+            // move right
+            match side {
+                Side::L => ((ix - w, iy), Side::B),
+                Side::B => ((ix - w, iy), Side::R),
+                Side::R => ((ix - w, iy), Side::F),
+                Side::F => ((ix - w, iy), Side::L),
+                Side::U => ((w - iy - 1, ix - w), Side::R),
+                Side::D => ((iy, 2 * w - ix - 1), Side::R),
+            }
+        } else if ix >= 0 && ix < w && iy < 0 {
+            // x is in range, y is too small
+            // move up
+            match side {
+                Side::L => ((-iy - 1, ix), Side::U),
+                Side::B => ((ix, w + iy), Side::U),
+                Side::R => ((w + iy, w - ix - 1), Side::U),
+                Side::F => ((w - ix - 1, -iy - 1), Side::U),
+                Side::U => ((w - ix - 1, -iy - 1), Side::F),
+                Side::D => ((ix, w + iy), Side::B),
+            }
+        } else if ix >= 0 && ix < w && iy >= w {
+            // x is in range, y is too large
+            // move down
+            match side {
+                Side::L => ((iy - w, w - ix - 1), Side::D),
+                Side::B => ((ix, iy - w), Side::D),
+                Side::R => ((2 * w - iy - 1, ix), Side::D),
+                Side::F => ((w - ix - 1, 2 * w - iy - 1), Side::D),
+                Side::U => ((ix, iy - w), Side::B),
+                Side::D => ((w - ix - 1, 2 * w - iy - 1), Side::F),
+            }
+        } else {
+            // neither is in range. client must wrap x and y themself
+            let clamped_ix = isize::clamp(ix, 0, w - 1);
+            let clamped_iy = isize::clamp(iy, 0, w - 1);
 
-        return Err((val1, val2));
-    };
+            let val1 = Self::new((clamped_ix, iy), width, side).unwrap();
+            let val2 = Self::new((ix, clamped_iy), width, side).unwrap();
 
-    Ok(((new_ix as usize, new_iy as usize), new_side))
+            return Err((val1, val2));
+        };
+
+        Ok(Self {
+            ix: new_ix as usize,
+            iy: new_iy as usize,
+            side: new_side,
+        })
+    }
 }
 
 fn sample_height(i: (isize, isize), width: usize, side: Side, sides: &[ProtoSide]) -> f32 {
-    match remap_erosion_index(i, width, side) {
-        Ok(((ix, iy), side)) => {
+    match RemappedIndex::new(i, width, side) {
+        Ok(RemappedIndex { ix, iy, side }) => {
             let side_index = side.to_index();
             let h = sides[side_index].height_map.borrow().get(ix, iy);
             h.height
         }
-        Err((((lix, liy), lside), ((rix, riy), rside))) => {
+        Err((
+            RemappedIndex {
+                ix: lix,
+                iy: liy,
+                side: lside,
+            },
+            RemappedIndex {
+                ix: rix,
+                iy: riy,
+                side: rside,
+            },
+        )) => {
             let lside_index = lside.to_index();
             let lh = sides[lside_index].height_map.borrow().get(lix, liy);
             let lval = lh.height;
@@ -1507,7 +1613,12 @@ fn calculate_gradient_and_height(
     let x = pos.x() - coord_x as f32;
     let y = pos.y() - coord_y as f32;
 
-    let (onw, one, osw, ose) = eko.get_offsets();
+    let ErosionKernelOriginOffsets {
+        nw: onw,
+        ne: one,
+        sw: osw,
+        se: ose,
+    } = eko.get_offsets();
 
     let inw = (coord_x + onw.0, coord_y + onw.1);
     let ine = (coord_x + one.0, coord_y + one.1);
@@ -1535,8 +1646,8 @@ fn deposit_sediment(
     sides: &[ProtoSide],
     sediment: f32,
 ) {
-    match remap_erosion_index(ipos, width, side) {
-        Ok(((ix, iy), side)) => {
+    match RemappedIndex::new(ipos, width, side) {
+        Ok(RemappedIndex { ix, iy, side }) => {
             let side_index = side.to_index();
             let mut h = sides[side_index].height_map.borrow().get(ix, iy);
             h.height += sediment;
@@ -1545,7 +1656,18 @@ fn deposit_sediment(
             let mut height_map = height_map.borrow_mut();
             height_map.set(ix, iy, h);
         }
-        Err((((lix, liy), lside), ((rix, riy), rside))) => {
+        Err((
+            RemappedIndex {
+                ix: lix,
+                iy: liy,
+                side: lside,
+            },
+            RemappedIndex {
+                ix: rix,
+                iy: riy,
+                side: rside,
+            },
+        )) => {
             let li = (lix as isize, liy as isize);
             let ri = (rix as isize, riy as isize);
 
@@ -1553,4 +1675,24 @@ fn deposit_sediment(
             deposit_sediment(ri, width, rside, sides, sediment / 2.0);
         }
     }
+}
+
+fn prepare_proto_sides(sides: impl AsRef<[ProtoSide]>) -> Vec<HeightMap> {
+    let mut result = Vec::new();
+    for side in sides.as_ref().iter() {
+        let height_map = side.height_map.borrow();
+
+        let values = height_map
+            .values
+            .iter()
+            .map(|x| x.height)
+            .collect::<Vec<_>>();
+        let side = height_map.side;
+
+        let height_map = HeightMap { values, side };
+
+        result.push(height_map);
+    }
+
+    result
 }
