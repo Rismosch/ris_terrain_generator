@@ -89,30 +89,71 @@ pub enum ErosionKind {
 }
 
 pub struct Args {
+    /// a wrapper around a `u128`, which controls the RNG of the generator. the same seed will
+    /// produce the same terrain. `Seed::new()` generates a completely new and unique seed, which
+    /// in turn generates completely new terran. `Seed::default()` on the other hand returns a hard
+    /// coded, unchanging seed. Use `Seed::default()` or `Seed(<your_number>)` to generate the same
+    /// terrain again and again.
     pub seed: Seed,
+    /// the width of a single cube face. this has a small effect on the overall structure of the
+    /// terrain. it affects the continent generation, but aside from that it increases resolution.
+    /// note that the bigger the width, the longer the generation takes. at sufficiently large
+    /// widths, generation can take up minutes, maybe even hours on weak hardware.
     pub width: usize,
+    /// determines how many continents should be generated. these are used to generate very coarse
+    /// terrain features, like mountain peaks and trenches.
     pub continent_count: usize,
+    /// determines the width of the continental mountains/trenches. note that the height falls of
+    /// with distance to the continental boundary, which may become smaller than the perlin noise,
+    /// thus mountains/trenches may appear to be not as wide as one might expect from this setting.
     pub continental_mountain_thickness: usize,
+    /// the main octave of the fractal perlin noise. every other octave will be weighted less than
+    /// the main layer. the further away an octave is from the main one, the smaller its
+    /// contribution to the noise.
     pub fractal_main_layer: usize,
+    /// the weight of the total fractal perlin noise. the coarse continent terrain has a weight of
+    /// 1.
     pub fractal_weight: f32,
+    /// determines how the position of the rain droplets should be found. `ErosionKind::Stride`
+    /// produces a periodic pattern, using the golden ratio, guaranteeing that raindrops are
+    /// spawned uniformly. `ErosionKind::Rng` produces random droplets, which does not have the
+    /// uniform guarantee, but may produce more organic looking terrain.
     pub erosion_kind: ErosionKind,
+    /// determines how many raindrops should be spawned.
     pub erosion_iterations: usize,
+    /// after `erosion_normalize_mod` steps the terrain is normalized. this is an attempt to avoid
+    /// artifacts when `erosion_iterations` is set to ridiculously high values.
     pub erosion_normalize_mod: usize,
+    /// determines how many steps a raindrop lives at maximum, before simulating a new and
+    /// different raindrop.
     pub erosion_max_lifetime: usize,
+    /// sets the initial speed of the raindrop.
     pub erosion_start_speed: f32,
+    /// sets how much water a raindrop has initially.
     pub erosion_start_water: f32,
+    /// determines how difficult it is to change the direction the droplet is moving in. this means
+    /// a droplet may not always flow down the steepest slope, but may overshoot and land somewhere
+    /// else.
     pub erosion_inertia: f32,
+    /// determines the minimum amount of material a raindrop can hold.
     pub erosion_min_sediment_capacity: f32,
+    /// has an effect on how much material a raindrop can hold. if a raindrop exceeds this factor,
+    /// it will deposit material while flowing.
     pub erosion_sediment_capacity_factor: f32,
+    /// has a direct effect on how much material is removed from the terrain.
     pub erosion_erode_speed: f32,
+    /// has a direct effect on how much material the raindrop loses when depositing back to the
+    /// terrain. for example when the raindrop evaporates, it will leave material behind.
     pub erosion_deposit_speed: f32,
+    /// determines how fast the droplet accelerates downwards.
     pub erosion_gravity: f32,
+    /// sets how much water the raindrop loses after each step.
     pub erosion_evaporate_speed: f32,
 }
 
 impl Default for Args {
     fn default() -> Self {
-        let seed = super::rng::Seed::new();
+        let seed = super::rng::Seed::default();
         let width = 1 << 8;
 
         Self {
