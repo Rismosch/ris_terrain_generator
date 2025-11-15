@@ -54,7 +54,7 @@ fn main() {
     };
 
     // run terrain generator
-    let result = terrain_generator::run(args);
+    let result = terrain_generator::run(Default::default());
 
     // use heightmap as desired
     if let Err(e) = save_as_bin(&result) {
@@ -213,13 +213,13 @@ fn save_as_qoi_preview<'a>(
 
 fn colored_height_gradient() -> Result<Gradient<OkLab, 3>, Box<dyn std::error::Error>> {
     let gradient = Gradient::try_from([
-        OkLab::from(Rgb::from_hex("#00008a")?),
+        OkLab::from(Rgb::from_hex("#334e9d")?),
         OkLab::from(Rgb::from_hex("#1d90ff")?),
-        OkLab::from(Rgb::from_hex("#04e100")?),
-        OkLab::from(Rgb::from_hex("#ffff00")?),
+        OkLab::from(Rgb::from_hex("#52d83b")?),
+        OkLab::from(Rgb::from_hex("#e4f035")?),
         OkLab::from(Rgb::from_hex("#ff8b00")?),
-        OkLab::from(Rgb::from_hex("#ff0300")?),
-        OkLab::from(Rgb::from_hex("#a64020")?),
+        OkLab::from(Rgb::from_hex("#b01e13")?),
+        OkLab::from(Rgb::from_hex("#7c2b12")?),
     ])?;
 
     Ok(gradient)
