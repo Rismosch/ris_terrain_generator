@@ -54,7 +54,7 @@ fn main() {
     };
 
     // run terrain generator
-    let result = terrain_generator::run(Default::default());
+    let result = terrain_generator::run(args);
 
     // use heightmap as desired
     if let Err(e) = save_as_bin(&result) {
